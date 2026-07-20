@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.googleAuth = exports.createTestAdmin = exports.loginAdmin = void 0;
+exports.googleAuth = exports.loginAdmin = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const User_1 = require("../models/User");
 const asyncHandler_1 = require("../utils/asyncHandler");
@@ -48,23 +48,6 @@ exports.loginAdmin = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
         phone: user.phone,
         role: user.role,
         token
-    });
-});
-// Helper to quickly create a test admin user (Can be removed later)
-exports.createTestAdmin = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
-    const userExists = await User_1.User.findOne({ email: 'neokart007@gmail.com' });
-    if (userExists) {
-        return (0, responseHandler_1.errorResponse)(res, 400, 'Admin already exists');
-    }
-    const admin = await User_1.User.create({
-        name: 'System Admin',
-        email: 'neokart007@gmail.com',
-        password: 'password123',
-        role: 'superadmin'
-    });
-    (0, responseHandler_1.successResponse)(res, 201, 'Test admin created successfully. You can now login.', {
-        email: admin.email,
-        password: 'password123'
     });
 });
 // Google OAuth Sign-In (supports both ID token and access token flows)

@@ -33,31 +33,18 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Product = void 0;
+exports.Newsletter = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
-const variantSchema = new mongoose_1.Schema({
-    volume: { type: String, required: true },
-    price: { type: Number, required: true },
-    oldPrice: { type: Number },
-    color: { type: String },
-    images: [{ type: String }],
-});
-const productSchema = new mongoose_1.Schema({
-    name: { type: String, required: true, trim: true },
-    category: { type: String, required: true },
-    description: { type: String, required: true },
-    variants: [variantSchema],
-    starRating: { type: Number, default: 0, min: 0, max: 5 },
-    reviewsCount: { type: Number, default: 0 },
-    offerText: { type: String },
-    keyFeatures: { type: String },
-    images: [{ type: String }],
-    status: { type: String, default: 'In Stock' },
-    showOnLandingPage: { type: Boolean, default: false },
-    garmentType: { type: String, trim: true },
-    collectionName: { type: String, trim: true },
-    season: { type: String, trim: true },
-    lifeMode: { type: String, trim: true },
+const newsletterSchema = new mongoose_1.Schema({
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true,
+    },
+    source: { type: String, trim: true }, // where they subscribed from (e.g. "home-studio")
+    isActive: { type: Boolean, default: true },
 }, { timestamps: true });
-exports.Product = mongoose_1.default.model('Product', productSchema);
-//# sourceMappingURL=Product.js.map
+exports.Newsletter = mongoose_1.default.model('Newsletter', newsletterSchema);
+//# sourceMappingURL=Newsletter.js.map

@@ -6,15 +6,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const userController_1 = require("../controllers/userController");
 const authMiddleware_1 = require("../middlewares/authMiddleware");
+const validation_1 = require("../middlewares/validation");
 const router = express_1.default.Router();
 router.route('/profile')
     .get(authMiddleware_1.protect, userController_1.getProfile)
-    .put(authMiddleware_1.protect, userController_1.updateProfile);
+    .put(authMiddleware_1.protect, (0, validation_1.validate)(validation_1.schemas.updateProfile), userController_1.updateProfile);
 router.route('/addresses')
     .get(authMiddleware_1.protect, userController_1.getAddresses)
-    .post(authMiddleware_1.protect, userController_1.addAddress);
+    .post(authMiddleware_1.protect, (0, validation_1.validate)(validation_1.schemas.addAddress), userController_1.addAddress);
 router.route('/addresses/:addressId')
-    .put(authMiddleware_1.protect, userController_1.editAddress)
+    .put(authMiddleware_1.protect, (0, validation_1.validate)(validation_1.schemas.addAddress), userController_1.editAddress)
     .delete(authMiddleware_1.protect, userController_1.deleteAddress);
 // Admin routes
 router.get('/admin/customers', authMiddleware_1.protect, (0, authMiddleware_1.authorize)('admin', 'superadmin'), userController_1.getAllCustomers);

@@ -133,6 +133,14 @@ export const schemas = {
     }),
   }),
 
+  // Newsletter
+  subscribe: z.object({
+    body: z.object({
+      email: z.string().email('Invalid email address'),
+      source: z.string().max(60).optional(),
+    }),
+  }),
+
   // ID parameter validation
   mongoId: z.object({
     params: z.object({

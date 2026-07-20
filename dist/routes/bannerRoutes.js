@@ -8,11 +8,13 @@ const bannerController_1 = require("../controllers/bannerController");
 const authMiddleware_1 = require("../middlewares/authMiddleware");
 const uploadMiddleware_1 = require("../middlewares/uploadMiddleware");
 const router = express_1.default.Router();
+// Catalog writes are admin-only; reads stay public.
+const adminOnly = [authMiddleware_1.protect, (0, authMiddleware_1.authorize)('admin', 'superadmin')];
 router.route('/')
-    .post(authMiddleware_1.protect, uploadMiddleware_1.upload.fields([{ name: 'image', maxCount: 1 }, { name: 'mobileImage', maxCount: 1 }]), bannerController_1.createBanner)
+    .post(...adminOnly, uploadMiddleware_1.upload.fields([{ name: 'image', maxCount: 1 }, { name: 'mobileImage', maxCount: 1 }]), bannerController_1.createBanner)
     .get(bannerController_1.getBanners);
 router.route('/:id')
-    .put(authMiddleware_1.protect, uploadMiddleware_1.upload.fields([{ name: 'image', maxCount: 1 }, { name: 'mobileImage', maxCount: 1 }]), bannerController_1.updateBanner)
-    .delete(authMiddleware_1.protect, bannerController_1.deleteBanner);
+    .put(...adminOnly, uploadMiddleware_1.upload.fields([{ name: 'image', maxCount: 1 }, { name: 'mobileImage', maxCount: 1 }]), bannerController_1.updateBanner)
+    .delete(...adminOnly, bannerController_1.deleteBanner);
 exports.default = router;
 //# sourceMappingURL=bannerRoutes.js.map

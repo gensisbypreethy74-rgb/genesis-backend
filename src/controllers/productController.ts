@@ -7,12 +7,16 @@ import { successResponse, errorResponse } from '../utils/responseHandler';
 const attachUploads = (req: Request) => {
   const files = (Array.isArray(req.files) ? req.files : []) as Express.Multer.File[];
 
-  // Handle variants parsing if sent as a string (from FormData)
-  if (typeof req.body.variants === 'string') {
-    try {
-      req.body.variants = JSON.parse(req.body.variants);
-    } catch (e) {
-      // do nothing, let validator catch it
+  // FormData flattens everything to strings, so the structured fields arrive
+  // JSON-encoded and have to be revived before Mongoose sees them. `variants`
+  // has always needed this; `specs` and `careIcons` are the PDP fields.
+  for (const field of ['variants', 'specs', 'careIcons'] as const) {
+    if (typeof req.body[field] === 'string') {
+      try {
+        req.body[field] = JSON.parse(req.body[field]);
+      } catch {
+        // Leave it as-is and let schema validation produce the error.
+      }
     }
   }
 

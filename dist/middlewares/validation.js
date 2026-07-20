@@ -126,6 +126,13 @@ exports.schemas = {
             country: zod_1.z.string().max(100).optional(),
         }),
     }),
+    // Newsletter
+    subscribe: zod_1.z.object({
+        body: zod_1.z.object({
+            email: zod_1.z.string().email('Invalid email address'),
+            source: zod_1.z.string().max(60).optional(),
+        }),
+    }),
     // ID parameter validation
     mongoId: zod_1.z.object({
         params: zod_1.z.object({

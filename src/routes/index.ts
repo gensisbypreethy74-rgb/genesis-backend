@@ -9,6 +9,7 @@ import paymentRoutes from './paymentRoutes';
 import cartRoutes from './cartRoutes';
 import dashboardRoutes from './dashboardRoutes';
 import faqRoutes from './faqRoutes';
+import newsletterRoutes from './newsletterRoutes';
 
 const router = Router();
 
@@ -25,5 +26,6 @@ router.use('/payments', paymentRoutes);
 router.use('/cart', cartRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/faqs', faqRoutes);
+router.use('/newsletter', newsletterRoutes);
 
 export default router;

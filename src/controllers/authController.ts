@@ -56,26 +56,6 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-// Helper to quickly create a test admin user (Can be removed later)
-export const createTestAdmin = asyncHandler(async (req: Request, res: Response) => {
-  const userExists = await User.findOne({ email: 'neokart007@gmail.com' });
-  if (userExists) {
-    return errorResponse(res, 400, 'Admin already exists');
-  }
-
-  const admin = await User.create({
-    name: 'System Admin',
-    email: 'neokart007@gmail.com',
-    password: 'password123',
-    role: 'superadmin'
-  });
-
-  successResponse(res, 201, 'Test admin created successfully. You can now login.', {
-    email: admin.email,
-    password: 'password123'
-  });
-});
-
 // Google OAuth Sign-In (supports both ID token and access token flows)
 export const googleAuth = asyncHandler(async (req: Request, res: Response) => {
   const { credential, googleId: bodyGoogleId, email: bodyEmail, name: bodyName, picture: bodyPicture, mode } = req.body;

@@ -8,11 +8,13 @@ const categoryController_1 = require("../controllers/categoryController");
 const authMiddleware_1 = require("../middlewares/authMiddleware");
 const uploadMiddleware_1 = require("../middlewares/uploadMiddleware");
 const router = express_1.default.Router();
+// Catalog writes are admin-only; reads stay public.
+const adminOnly = [authMiddleware_1.protect, (0, authMiddleware_1.authorize)('admin', 'superadmin')];
 router.route('/')
-    .post(authMiddleware_1.protect, uploadMiddleware_1.upload.single('imageFile'), categoryController_1.createCategory)
+    .post(...adminOnly, uploadMiddleware_1.upload.single('imageFile'), categoryController_1.createCategory)
     .get(categoryController_1.getCategories);
 router.route('/:id')
-    .put(authMiddleware_1.protect, uploadMiddleware_1.upload.single('imageFile'), categoryController_1.updateCategory)
-    .delete(authMiddleware_1.protect, categoryController_1.deleteCategory);
+    .put(...adminOnly, uploadMiddleware_1.upload.single('imageFile'), categoryController_1.updateCategory)
+    .delete(...adminOnly, categoryController_1.deleteCategory);
 exports.default = router;
 //# sourceMappingURL=categoryRoutes.js.map
