@@ -13,6 +13,9 @@ import { apiLimiter } from './middlewares/rateLimiter';
 import logger from './utils/logger';
 
 const app: Application = express();
+app.set("trust proxy", 1);
+
+
 
 // Security Middlewares
 // Helmet - sets various HTTP headers for security
