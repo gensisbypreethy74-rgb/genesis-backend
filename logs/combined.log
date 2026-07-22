@@ -14,3 +14,4 @@
 {"email":"marshookali2@gmail.com","error":"Zoho token refresh failed: invalid_code ()","event":"ZOHO_SUBSCRIBE_ERROR","level":"error","message":"Zoho listsubscribe error","service":"heedy-backend","timestamp":"2026-07-19 18:47:54"}
 {"detail":"Invalid Contact Email address.","email":"genesis.verify.16627@gmail.com","event":"ZOHO_SUBSCRIBE_FAILED","level":"warn","message":"Zoho listsubscribe did not succeed","service":"heedy-backend","status":200,"timestamp":"2026-07-19 19:01:17"}
 {"detail":"Invalid Contact Email address.","email":"preethy.customer99@gmail.com","event":"ZOHO_SUBSCRIBE_FAILED","level":"warn","message":"Zoho listsubscribe did not succeed","service":"heedy-backend","status":200,"timestamp":"2026-07-19 19:02:27"}
+{"level":"info","message":"📭 Email disabled (no SendGrid config). Skipping \"You’re on the list — Notes from the Studio\" to confirm-flow-test@example.com","service":"heedy-backend","timestamp":"2026-07-22 11:00:17"}
