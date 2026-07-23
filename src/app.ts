@@ -83,6 +83,17 @@ if (ENV.NODE_ENV === 'development') {
   }));
 }
 
+// Root — a friendly 200 for uptime pings / platform health checks so `GET /`
+// and `HEAD /` don't log as 404s (Render probes the root by default).
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    success: true,
+    service: 'Genesis by Preethy — API',
+    status: 'live',
+    health: '/api/v1/health',
+  });
+});
+
 // API Routes
 app.use('/api/v1', apiRoutes);
 import path from 'path';

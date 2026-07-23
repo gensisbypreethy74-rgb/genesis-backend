@@ -33,8 +33,29 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Product = void 0;
+exports.Product = exports.CARE_ICONS = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
+/**
+ * Care symbols the product detail page can render. A closed vocabulary rather
+ * than free text so the storefront can map each to an icon, and so the admin
+ * offers a checklist instead of inviting typos.
+ */
+exports.CARE_ICONS = [
+    'hand-wash',
+    'machine-wash',
+    'dont-bleach',
+    'iron-low',
+    'iron-medium',
+    'dont-iron',
+    'dry-in-shade',
+    'dry-flat',
+    'dont-tumble-dry',
+    'dry-clean',
+];
+const specSchema = new mongoose_1.Schema({
+    label: { type: String, required: true, trim: true },
+    value: { type: String, required: true, trim: true },
+}, { _id: false });
 const variantSchema = new mongoose_1.Schema({
     volume: { type: String, required: true },
     price: { type: Number, required: true },
@@ -58,6 +79,17 @@ const productSchema = new mongoose_1.Schema({
     collectionName: { type: String, trim: true },
     season: { type: String, trim: true },
     lifeMode: { type: String, trim: true },
+    // Product detail page
+    tagline: { type: String, trim: true },
+    fitNote: { type: String, trim: true },
+    modelNote: { type: String, trim: true },
+    studioNotes: { type: String, trim: true },
+    materialText: { type: String, trim: true },
+    specs: { type: [specSchema], default: undefined },
+    fitFooter: { type: String, trim: true },
+    careIcons: { type: [{ type: String, enum: exports.CARE_ICONS }], default: undefined },
+    careText: { type: String, trim: true },
+    shippingReturns: { type: String, trim: true },
 }, { timestamps: true });
 exports.Product = mongoose_1.default.model('Product', productSchema);
 //# sourceMappingURL=Product.js.map

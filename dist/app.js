@@ -16,6 +16,7 @@ const sanitize_1 = require("./middlewares/sanitize");
 const rateLimiter_1 = require("./middlewares/rateLimiter");
 const logger_1 = __importDefault(require("./utils/logger"));
 const app = (0, express_1.default)();
+app.set("trust proxy", 1);
 // Security Middlewares
 // Helmet - sets various HTTP headers for security
 app.use((0, helmet_1.default)({
@@ -76,6 +77,16 @@ else {
         },
     }));
 }
+// Root — a friendly 200 for uptime pings / platform health checks so `GET /`
+// and `HEAD /` don't log as 404s (Render probes the root by default).
+app.get('/', (_req, res) => {
+    res.status(200).json({
+        success: true,
+        service: 'Genesis by Preethy — API',
+        status: 'live',
+        health: '/api/v1/health',
+    });
+});
 // API Routes
 app.use('/api/v1', routes_1.default);
 const path_1 = __importDefault(require("path"));
