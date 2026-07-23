@@ -79,6 +79,13 @@ const productSchema = new mongoose_1.Schema({
     collectionName: { type: String, trim: true },
     season: { type: String, trim: true },
     lifeMode: { type: String, trim: true },
+    editSection: {
+        type: String,
+        trim: true,
+        enum: ['Within', 'Beyond', 'Genesis Men', 'Archive', ''],
+        default: '',
+    },
+    limited: { type: Boolean, default: false },
     // Product detail page
     tagline: { type: String, trim: true },
     fitNote: { type: String, trim: true },

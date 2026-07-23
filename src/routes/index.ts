@@ -10,6 +10,8 @@ import cartRoutes from './cartRoutes';
 import dashboardRoutes from './dashboardRoutes';
 import faqRoutes from './faqRoutes';
 import newsletterRoutes from './newsletterRoutes';
+import storyRoutes from './storyRoutes';
+import momentRoutes from './momentRoutes';
 
 const router = Router();
 
@@ -27,5 +29,7 @@ router.use('/cart', cartRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/faqs', faqRoutes);
 router.use('/newsletter', newsletterRoutes);
+router.use('/story', storyRoutes);
+router.use('/moment', momentRoutes);
 
 export default router;

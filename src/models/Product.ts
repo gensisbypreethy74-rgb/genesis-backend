@@ -56,6 +56,8 @@ export interface IProduct extends Document {
   collectionName?: string; // e.g. "Onam" — groups a seasonal drop (`collection` is reserved by Mongoose)
   season?: string;         // e.g. "Onam 2026"
   lifeMode?: string;       // "Ambition" | "Occasion" | "Casual/Out" | "At-Home Identity"
+  editSection?: string;    // which THE EDIT page: "Within" | "Beyond" | "Genesis Men" | "Archive"
+  limited?: boolean;       // renders the "LIMITED PIECE" tag on the card
 
   // ── Product detail page ──────────────────────────────────────────────────
   // Everything below drives the storefront PDP. Each is optional: the page
@@ -106,6 +108,13 @@ const productSchema = new Schema<IProduct>(
     collectionName: { type: String, trim: true },
     season: { type: String, trim: true },
     lifeMode: { type: String, trim: true },
+    editSection: {
+      type: String,
+      trim: true,
+      enum: ['Within', 'Beyond', 'Genesis Men', 'Archive', ''],
+      default: '',
+    },
+    limited: { type: Boolean, default: false },
 
     // Product detail page
     tagline: { type: String, trim: true },
