@@ -12,6 +12,8 @@ import faqRoutes from './faqRoutes';
 import newsletterRoutes from './newsletterRoutes';
 import storyRoutes from './storyRoutes';
 import momentRoutes from './momentRoutes';
+import founderNoteRoutes from './founderNoteRoutes';
+import studioNoteRoutes from './studioNoteRoutes';
 
 const router = Router();
 
@@ -31,5 +33,7 @@ router.use('/faqs', faqRoutes);
 router.use('/newsletter', newsletterRoutes);
 router.use('/story', storyRoutes);
 router.use('/moment', momentRoutes);
+router.use('/founder-note', founderNoteRoutes);
+router.use('/studio-note', studioNoteRoutes);
 
 export default router;
