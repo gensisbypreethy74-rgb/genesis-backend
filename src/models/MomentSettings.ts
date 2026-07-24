@@ -7,6 +7,15 @@ export interface IMomentStep {
   description: string;
 }
 
+export interface ISeasonalCollection {
+  eyebrow: string;
+  heading: string;
+  description: string;
+  ctaLabel: string;
+  ctaHref: string;
+  productIds: string[]; // ordered — drives the carousel
+}
+
 export interface IMomentSettings extends Document {
   eyebrow: string;
   title: string;
@@ -15,6 +24,7 @@ export interface IMomentSettings extends Document {
   shopHref: string; // Shop button → an all-products page with filters
   explainerEyebrow: string;
   steps: IMomentStep[];
+  seasonal: ISeasonalCollection;
 }
 
 const stepSchema = new Schema<IMomentStep>(
@@ -28,13 +38,21 @@ const DEFAULTS = {
   body:
     'A small, named run — pieces drawn for Onam, live now. It closes on its own time, not when stock runs low.\n\nNothing here is discounted, and nothing is rushed. When this window closes, the pieces move — unchanged — into the Archive, and rest there, fully available to buy.',
   shopLabel: 'Shop the Onam Collection',
-  shopHref: '/products?collection=onam',
+  shopHref: '/collections/onam',
   explainerEyebrow: 'HOW A GENESIS MOMENT WORKS',
   steps: [
     { number: '01', title: 'IT OPENS, NAMED', description: 'A small, named run — a handful of pieces drawn around one idea. Never a full wardrobe.' },
     { number: '02', title: 'IT CLOSES, QUIETLY', description: "When it's time, the Moment closes. No sale, no clearance, no urgency manufactured to move stock." },
     { number: '03', title: 'IT BECOMES ARCHIVE', description: 'Each piece moves into the Archive — same page, same photography, re-tagged — and remains available to buy.' },
   ],
+  seasonal: {
+    eyebrow: 'Now · The Onam Collection',
+    heading: 'Named for the flowers of the season.',
+    description: '',
+    ctaLabel: 'View All Pieces',
+    ctaHref: '/products',
+    productIds: [] as string[],
+  },
 };
 
 const momentSettingsSchema = new Schema<IMomentSettings>(
@@ -46,6 +64,14 @@ const momentSettingsSchema = new Schema<IMomentSettings>(
     shopHref: { type: String, default: DEFAULTS.shopHref },
     explainerEyebrow: { type: String, default: DEFAULTS.explainerEyebrow },
     steps: { type: [stepSchema], default: DEFAULTS.steps },
+    seasonal: {
+      eyebrow: { type: String, default: DEFAULTS.seasonal.eyebrow },
+      heading: { type: String, default: DEFAULTS.seasonal.heading },
+      description: { type: String, default: DEFAULTS.seasonal.description },
+      ctaLabel: { type: String, default: DEFAULTS.seasonal.ctaLabel },
+      ctaHref: { type: String, default: DEFAULTS.seasonal.ctaHref },
+      productIds: { type: [String], default: [] },
+    },
   },
   { timestamps: true }
 );

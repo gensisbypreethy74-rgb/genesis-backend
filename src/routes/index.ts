@@ -14,6 +14,7 @@ import storyRoutes from './storyRoutes';
 import momentRoutes from './momentRoutes';
 import founderNoteRoutes from './founderNoteRoutes';
 import studioNoteRoutes from './studioNoteRoutes';
+import categorySectionRoutes from './categorySectionRoutes';
 
 const router = Router();
 
@@ -35,5 +36,6 @@ router.use('/story', storyRoutes);
 router.use('/moment', momentRoutes);
 router.use('/founder-note', founderNoteRoutes);
 router.use('/studio-note', studioNoteRoutes);
+router.use('/category-section', categorySectionRoutes);
 
 export default router;
