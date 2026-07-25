@@ -33,17 +33,27 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Banner = void 0;
+exports.FounderNote = void 0;
+exports.getOrCreateFounderNote = getOrCreateFounderNote;
 const mongoose_1 = __importStar(require("mongoose"));
-const bannerSchema = new mongoose_1.Schema({
-    eyebrow: { type: String, trim: true },
-    title: { type: String, required: true, trim: true },
-    description: { type: String },
-    ctaLabel: { type: String, trim: true },
-    ctaHref: { type: String, trim: true },
-    image: { type: String, required: true },
-    mobileImage: { type: String },
-    status: { type: String, default: 'ACTIVE' },
+const DEFAULTS = {
+    eyebrow: "Founder's Note · Q3, At-Home & Monsoon",
+    heading: 'The monsoon makes certain truths obvious.',
+    body1: 'Fabric either lets you breathe or it does not. A dress either stays with the body through a wet afternoon, or it begins to fight it. This season we kept returning to pieces that hold their line in humidity and still feel quiet enough for the life most women are actually living.',
+    body2: 'Genesis is not interested in clothing that asks for performance. It is interested in clothing that lets a woman look like herself — with more ease, and more precision, than before.',
+    signature: '— Preethy',
+    image: '/images/saree-with-wome20.png',
+};
+const founderNoteSchema = new mongoose_1.Schema({
+    eyebrow: { type: String, default: DEFAULTS.eyebrow },
+    heading: { type: String, default: DEFAULTS.heading },
+    body1: { type: String, default: DEFAULTS.body1 },
+    body2: { type: String, default: DEFAULTS.body2 },
+    signature: { type: String, default: DEFAULTS.signature },
+    image: { type: String, default: DEFAULTS.image },
 }, { timestamps: true });
-exports.Banner = mongoose_1.default.model('Banner', bannerSchema);
-//# sourceMappingURL=Banner.js.map
+exports.FounderNote = mongoose_1.default.model('FounderNote', founderNoteSchema);
+async function getOrCreateFounderNote() {
+    return (await exports.FounderNote.findOne()) || (await exports.FounderNote.create({}));
+}
+//# sourceMappingURL=FounderNote.js.map

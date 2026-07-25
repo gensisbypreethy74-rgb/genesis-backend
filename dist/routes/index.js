@@ -15,6 +15,12 @@ const cartRoutes_1 = __importDefault(require("./cartRoutes"));
 const dashboardRoutes_1 = __importDefault(require("./dashboardRoutes"));
 const faqRoutes_1 = __importDefault(require("./faqRoutes"));
 const newsletterRoutes_1 = __importDefault(require("./newsletterRoutes"));
+const storyRoutes_1 = __importDefault(require("./storyRoutes"));
+const momentRoutes_1 = __importDefault(require("./momentRoutes"));
+const founderNoteRoutes_1 = __importDefault(require("./founderNoteRoutes"));
+const studioNoteRoutes_1 = __importDefault(require("./studioNoteRoutes"));
+const categorySectionRoutes_1 = __importDefault(require("./categorySectionRoutes"));
+const editSectionRoutes_1 = __importDefault(require("./editSectionRoutes"));
 const router = (0, express_1.Router)();
 // Health Check
 router.get('/health', healthController_1.checkHealth);
@@ -29,5 +35,11 @@ router.use('/cart', cartRoutes_1.default);
 router.use('/dashboard', dashboardRoutes_1.default);
 router.use('/faqs', faqRoutes_1.default);
 router.use('/newsletter', newsletterRoutes_1.default);
+router.use('/story', storyRoutes_1.default);
+router.use('/moment', momentRoutes_1.default);
+router.use('/founder-note', founderNoteRoutes_1.default);
+router.use('/studio-note', studioNoteRoutes_1.default);
+router.use('/category-section', categorySectionRoutes_1.default);
+router.use('/edit-sections', editSectionRoutes_1.default);
 exports.default = router;
 //# sourceMappingURL=index.js.map

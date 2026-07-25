@@ -33,17 +33,34 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Banner = void 0;
+exports.StorySection = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
-const bannerSchema = new mongoose_1.Schema({
+const timelineItemSchema = new mongoose_1.Schema({
+    label: { type: String, trim: true, default: '' },
+    text: { type: String, trim: true, default: '' },
+}, { _id: false });
+const storySectionSchema = new mongoose_1.Schema({
+    type: {
+        type: String,
+        required: true,
+        enum: ['hero', 'founders-note', 'text', 'image', 'gallery', 'quote', 'timeline', 'cta'],
+        default: 'text',
+    },
     eyebrow: { type: String, trim: true },
-    title: { type: String, required: true, trim: true },
-    description: { type: String },
+    title: { type: String, trim: true },
+    body: { type: String },
+    tagline: { type: String, trim: true },
+    image: { type: String, trim: true },
+    images: { type: [String], default: [] },
+    imageAlt: { type: String, trim: true },
+    imageLeft: { type: Boolean, default: false },
+    quote: { type: String },
+    quoteAuthor: { type: String, trim: true },
+    timeline: { type: [timelineItemSchema], default: [] },
     ctaLabel: { type: String, trim: true },
     ctaHref: { type: String, trim: true },
-    image: { type: String, required: true },
-    mobileImage: { type: String },
-    status: { type: String, default: 'ACTIVE' },
+    order: { type: Number, default: 0 },
+    status: { type: String, enum: ['DRAFT', 'PUBLISHED'], default: 'DRAFT' },
 }, { timestamps: true });
-exports.Banner = mongoose_1.default.model('Banner', bannerSchema);
-//# sourceMappingURL=Banner.js.map
+exports.StorySection = mongoose_1.default.model('StorySection', storySectionSchema);
+//# sourceMappingURL=StorySection.js.map

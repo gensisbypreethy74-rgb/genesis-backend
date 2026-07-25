@@ -33,17 +33,24 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Banner = void 0;
+exports.StorySettings = void 0;
+exports.getOrCreateStorySettings = getOrCreateStorySettings;
 const mongoose_1 = __importStar(require("mongoose"));
-const bannerSchema = new mongoose_1.Schema({
-    eyebrow: { type: String, trim: true },
-    title: { type: String, required: true, trim: true },
-    description: { type: String },
-    ctaLabel: { type: String, trim: true },
-    ctaHref: { type: String, trim: true },
-    image: { type: String, required: true },
-    mobileImage: { type: String },
-    status: { type: String, default: 'ACTIVE' },
+const storySettingsSchema = new mongoose_1.Schema({
+    metaTitle: { type: String, trim: true },
+    metaDescription: { type: String, trim: true },
+    slug: { type: String, trim: true, default: 'story' },
+    introEyebrow: { type: String, trim: true },
+    introHeading: { type: String, trim: true },
+    introDescription: { type: String, trim: true },
 }, { timestamps: true });
-exports.Banner = mongoose_1.default.model('Banner', bannerSchema);
-//# sourceMappingURL=Banner.js.map
+exports.StorySettings = mongoose_1.default.model('StorySettings', storySettingsSchema);
+/** There is exactly one settings document; fetch it or lazily create it. */
+async function getOrCreateStorySettings() {
+    let settings = await exports.StorySettings.findOne();
+    if (!settings) {
+        settings = await exports.StorySettings.create({ slug: 'story' });
+    }
+    return settings;
+}
+//# sourceMappingURL=StorySettings.js.map

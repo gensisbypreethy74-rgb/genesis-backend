@@ -33,17 +33,17 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Banner = void 0;
+exports.CategorySection = void 0;
+exports.getOrCreateCategorySection = getOrCreateCategorySection;
 const mongoose_1 = __importStar(require("mongoose"));
-const bannerSchema = new mongoose_1.Schema({
-    eyebrow: { type: String, trim: true },
-    title: { type: String, required: true, trim: true },
-    description: { type: String },
-    ctaLabel: { type: String, trim: true },
-    ctaHref: { type: String, trim: true },
-    image: { type: String, required: true },
-    mobileImage: { type: String },
-    status: { type: String, default: 'ACTIVE' },
+const categorySectionSchema = new mongoose_1.Schema({
+    eyebrow: { type: String, default: 'The Edit' },
+    heading: { type: String, default: 'Find your way in.' },
+    shopLabel: { type: String, default: 'Shop All' },
+    shopHref: { type: String, default: '/products' },
 }, { timestamps: true });
-exports.Banner = mongoose_1.default.model('Banner', bannerSchema);
-//# sourceMappingURL=Banner.js.map
+exports.CategorySection = mongoose_1.default.model('CategorySection', categorySectionSchema);
+async function getOrCreateCategorySection() {
+    return (await exports.CategorySection.findOne()) || (await exports.CategorySection.create({}));
+}
+//# sourceMappingURL=CategorySection.js.map

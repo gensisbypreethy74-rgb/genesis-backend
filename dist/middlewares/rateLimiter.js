@@ -5,13 +5,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.uploadLimiter = exports.paymentLimiter = exports.otpLimiter = exports.authLimiter = exports.apiLimiter = void 0;
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
-// General API rate limiter
+// General API rate limiter.
+// A single storefront page load fans out to ~8 public content endpoints
+// (banner, categories, category-section, moment, founder-note, studio-note,
+// products, story), doubled by React StrictMode in dev — so 100/15min locked
+// out a visitor after a dozen views. This ceiling is an abuse guard, not a
+// per-page budget; it must clear normal browsing (incl. shared-NAT IPs) with
+// room to spare. Disabled entirely in development (StrictMode + HMR + local
+// testing would otherwise trip it).
 exports.apiLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: 2000, // per IP per window
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => process.env.NODE_ENV !== 'production',
 });
 // Strict rate limiter for authentication endpoints
 exports.authLimiter = (0, express_rate_limit_1.default)({

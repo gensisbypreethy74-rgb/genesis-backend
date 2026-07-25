@@ -33,17 +33,25 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Banner = void 0;
+exports.StudioNote = void 0;
+exports.getOrCreateStudioNote = getOrCreateStudioNote;
 const mongoose_1 = __importStar(require("mongoose"));
-const bannerSchema = new mongoose_1.Schema({
-    eyebrow: { type: String, trim: true },
-    title: { type: String, required: true, trim: true },
-    description: { type: String },
-    ctaLabel: { type: String, trim: true },
-    ctaHref: { type: String, trim: true },
-    image: { type: String, required: true },
-    mobileImage: { type: String },
-    status: { type: String, default: 'ACTIVE' },
+const DEFAULTS = {
+    eyebrow: "Story · Studio Notes — The Designer's Eye",
+    heading: 'The line begins where weather, body and proportion meet.',
+    description: "Every Genesis piece is shaped through three questions: does it serve the woman over forty, will it breathe in heat and monsoon air, and does it give her identity without asking her to perform. Nineteen years of an interior designer's eye, turned toward clothing.",
+    ctaLabel: 'View the Collection',
+    ctaHref: '/products',
+};
+const studioNoteSchema = new mongoose_1.Schema({
+    eyebrow: { type: String, default: DEFAULTS.eyebrow },
+    heading: { type: String, default: DEFAULTS.heading },
+    description: { type: String, default: DEFAULTS.description },
+    ctaLabel: { type: String, default: DEFAULTS.ctaLabel },
+    ctaHref: { type: String, default: DEFAULTS.ctaHref },
 }, { timestamps: true });
-exports.Banner = mongoose_1.default.model('Banner', bannerSchema);
-//# sourceMappingURL=Banner.js.map
+exports.StudioNote = mongoose_1.default.model('StudioNote', studioNoteSchema);
+async function getOrCreateStudioNote() {
+    return (await exports.StudioNote.findOne()) || (await exports.StudioNote.create({}));
+}
+//# sourceMappingURL=StudioNote.js.map
