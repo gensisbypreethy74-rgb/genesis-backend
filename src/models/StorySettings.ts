@@ -10,6 +10,7 @@ export interface IStorySettings extends Document {
   slug: string;
   introEyebrow?: string;
   introHeading?: string;
+  introDescription?: string;
 }
 
 const storySettingsSchema = new Schema<IStorySettings>(
@@ -19,6 +20,7 @@ const storySettingsSchema = new Schema<IStorySettings>(
     slug: { type: String, trim: true, default: 'story' },
     introEyebrow: { type: String, trim: true },
     introHeading: { type: String, trim: true },
+    introDescription: { type: String, trim: true },
   },
   { timestamps: true }
 );

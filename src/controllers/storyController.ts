@@ -135,12 +135,13 @@ export const reorderStorySections = asyncHandler(async (req: Request, res: Respo
 // ── Settings ──────────────────────────────────────────────────────────────────
 export const updateStorySettings = asyncHandler(async (req: Request, res: Response) => {
   const settings = await getOrCreateStorySettings();
-  const { metaTitle, metaDescription, slug, introEyebrow, introHeading } = req.body;
+  const { metaTitle, metaDescription, slug, introEyebrow, introHeading, introDescription } = req.body;
   if (metaTitle !== undefined) settings.metaTitle = metaTitle;
   if (metaDescription !== undefined) settings.metaDescription = metaDescription;
   if (slug !== undefined) settings.slug = String(slug).trim() || 'story';
   if (introEyebrow !== undefined) settings.introEyebrow = introEyebrow;
   if (introHeading !== undefined) settings.introHeading = introHeading;
+  if (introDescription !== undefined) settings.introDescription = introDescription;
   await settings.save();
   successResponse(res, 200, 'Settings updated successfully', settings);
 });

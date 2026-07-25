@@ -15,6 +15,7 @@ import momentRoutes from './momentRoutes';
 import founderNoteRoutes from './founderNoteRoutes';
 import studioNoteRoutes from './studioNoteRoutes';
 import categorySectionRoutes from './categorySectionRoutes';
+import editSectionRoutes from './editSectionRoutes';
 
 const router = Router();
 
@@ -37,5 +38,6 @@ router.use('/moment', momentRoutes);
 router.use('/founder-note', founderNoteRoutes);
 router.use('/studio-note', studioNoteRoutes);
 router.use('/category-section', categorySectionRoutes);
+router.use('/edit-sections', editSectionRoutes);
 
 export default router;
