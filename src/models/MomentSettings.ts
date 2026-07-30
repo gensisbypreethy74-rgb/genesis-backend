@@ -7,13 +7,18 @@ export interface IMomentStep {
   description: string;
 }
 
+/**
+ * Header copy for The Moment's product showcase. Membership is NOT stored here —
+ * a piece is in The Moment when its category is "The Moment", set in the
+ * Products module. The old hand-curated `productIds` list is gone: with two
+ * sources of truth, a stale id silently outranked a freshly tagged piece.
+ */
 export interface ISeasonalCollection {
   eyebrow: string;
   heading: string;
   description: string;
   ctaLabel: string;
   ctaHref: string;
-  productIds: string[]; // ordered — drives the carousel
 }
 
 export interface IMomentSettings extends Document {
@@ -51,7 +56,6 @@ const DEFAULTS = {
     description: '',
     ctaLabel: 'View All Pieces',
     ctaHref: '/products',
-    productIds: [] as string[],
   },
 };
 
@@ -70,7 +74,6 @@ const momentSettingsSchema = new Schema<IMomentSettings>(
       description: { type: String, default: DEFAULTS.seasonal.description },
       ctaLabel: { type: String, default: DEFAULTS.seasonal.ctaLabel },
       ctaHref: { type: String, default: DEFAULTS.seasonal.ctaHref },
-      productIds: { type: [String], default: [] },
     },
   },
   { timestamps: true }

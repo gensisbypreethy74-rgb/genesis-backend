@@ -20,6 +20,23 @@ export interface ISpec {
 }
 
 /**
+ * One row of the per-product size chart, e.g. { size: 'M', bust: 94, waist: 76 }.
+ *
+ * Measurements are stored in CENTIMETRES and nothing else. The storefront
+ * derives inches at render time (1 in = 2.54 cm), so there is exactly one set
+ * of numbers to keep correct — a stored inch column would be a second copy of
+ * the same fact, free to drift the moment someone edits one and not the other.
+ * Every measurement is optional: the storefront drops a column no row fills.
+ */
+export interface ISizeChartRow {
+  size: string;
+  bust?: number;
+  waist?: number;
+  hip?: number;
+  length?: number;
+}
+
+/**
  * Care symbols the product detail page can render. A closed vocabulary rather
  * than free text so the storefront can map each to an icon, and so the admin
  * offers a checklist instead of inviting typos.
@@ -42,7 +59,7 @@ export type CareIcon = (typeof CARE_ICONS)[number];
 export interface IProduct extends Document {
   name: string;
   category: string;
-  description: string;
+  description?: string;
   variants: IVariant[];
   starRating: number;
   reviewsCount: number;
@@ -58,6 +75,13 @@ export interface IProduct extends Document {
   lifeMode?: string;       // "Ambition" | "Occasion" | "Casual/Out" | "At-Home Identity"
   editSection?: string;    // which THE EDIT page: "Within" | "Beyond" | "Genesis Men" | "Archive"
   limited?: boolean;       // renders the "LIMITED PIECE" tag on the card
+  /**
+   * Fabrics this piece is made of, e.g. ['Cotton', 'Linen']. Free text rather
+   * than an enum: the storefront's Material filter is built from whatever is
+   * actually on the products, so a new fabric needs no code change. The filter
+   * groups case-insensitively, so 'cotton' and 'Cotton' land in one option.
+   */
+  materials?: string[];
 
   // ── Product detail page ──────────────────────────────────────────────────
   // Everything below drives the storefront PDP. Each is optional: the page
@@ -69,6 +93,7 @@ export interface IProduct extends Document {
   studioNotes?: string;     // the paragraph under STUDIO NOTES
   materialText?: string;    // opening line of MATERIAL & FIT
   specs?: ISpec[];          // the label/value table under materialText
+  sizeChart?: ISizeChartRow[]; // body measurements per size, in cm (see ISizeChartRow)
   fitFooter?: string;       // "Unlined. Non-stretch. Side-seam pockets."
   careIcons?: CareIcon[];   // symbols rendered above careText
   careText?: string;        // the CARE paragraph
@@ -79,6 +104,19 @@ const specSchema = new Schema<ISpec>(
   {
     label: { type: String, required: true, trim: true },
     value: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
+const sizeChartRowSchema = new Schema<ISizeChartRow>(
+  {
+    size: { type: String, required: true, trim: true },
+    // Centimetres. `min: 0` only rejects nonsense; a blank cell stays undefined
+    // so the storefront can drop the whole column.
+    bust: { type: Number, min: 0 },
+    waist: { type: Number, min: 0 },
+    hip: { type: Number, min: 0 },
+    length: { type: Number, min: 0 },
   },
   { _id: false }
 );
@@ -95,7 +133,10 @@ const productSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true, trim: true },
     category: { type: String, required: true },
-    description: { type: String, required: true },
+    // Optional since the studio stopped collecting it: the form has no
+    // description field, so a required one would reject every new product.
+    // Existing values are left in place and still feed storefront search.
+    description: { type: String },
     variants: [variantSchema],
     starRating: { type: Number, default: 0, min: 0, max: 5 },
     reviewsCount: { type: Number, default: 0 },
@@ -115,6 +156,7 @@ const productSchema = new Schema<IProduct>(
       default: '',
     },
     limited: { type: Boolean, default: false },
+    materials: { type: [String], default: undefined },
 
     // Product detail page
     tagline: { type: String, trim: true },
@@ -123,6 +165,7 @@ const productSchema = new Schema<IProduct>(
     studioNotes: { type: String, trim: true },
     materialText: { type: String, trim: true },
     specs: { type: [specSchema], default: undefined },
+    sizeChart: { type: [sizeChartRowSchema], default: undefined },
     fitFooter: { type: String, trim: true },
     careIcons: { type: [{ type: String, enum: CARE_ICONS }], default: undefined },
     careText: { type: String, trim: true },

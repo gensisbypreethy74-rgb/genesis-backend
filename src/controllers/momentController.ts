@@ -24,7 +24,9 @@ export const updateMoment = asyncHandler(async (req: Request, res: Response) => 
     if (s.description !== undefined) m.seasonal.description = s.description;
     if (s.ctaLabel !== undefined) m.seasonal.ctaLabel = s.ctaLabel;
     if (s.ctaHref !== undefined) m.seasonal.ctaHref = s.ctaHref;
-    if (Array.isArray(s.productIds)) m.seasonal.productIds = s.productIds.map(String);
+    // No `productIds`: which pieces are in The Moment is decided by filing them
+    // under the "The Moment" category in the Products module, not by curating a
+    // list here.
   }
   await m.save();
   successResponse(res, 200, 'Moment updated', m);

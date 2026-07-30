@@ -11,15 +11,19 @@ const createOrUpdateAdmin = async () => {
     console.log('Connected to Database');
 
     // CHANGE THESE VALUES TO YOUR DESIRED ADMIN CREDENTIALS
-    const email = 'admin@example.com'; 
-    const password = 'newpassword123'; 
-    const name = 'Admin User';
+    const email = 'admin@genesisbypreethy.com';
+    const password = 'genesis@123';
+    const name = 'System Admin';
 
     let admin = await User.findOne({ email });
 
     if (admin) {
+      // Assigning to `password` and saving is required — the User model hashes in
+      // a pre('save') hook, so an updateOne() here would store it in plain text.
       admin.password = password;
-      admin.role = 'admin';
+      // Only promote, never demote: this account is a superadmin, and hardcoding
+      // 'admin' here would silently strip that on every re-run.
+      if (admin.role !== 'superadmin') admin.role = 'admin';
       admin.isActive = true;
       admin.isVerified = true;
       await admin.save();

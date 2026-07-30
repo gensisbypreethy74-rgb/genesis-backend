@@ -1,5 +1,5 @@
 import express from 'express';
-import { createProduct, getProducts, deleteProduct, updateProduct } from '../controllers/productController';
+import { createProduct, getProducts, getProductById, deleteProduct, updateProduct } from '../controllers/productController';
 import { protect, authorize } from '../middlewares/authMiddleware';
 import { upload } from '../middlewares/uploadMiddleware';
 
@@ -14,6 +14,7 @@ router.route('/')
   .get(getProducts);
 
 router.route('/:id')
+  .get(getProductById)
   .put(...adminOnly, upload.any(), updateProduct)
   .delete(...adminOnly, deleteProduct);
 

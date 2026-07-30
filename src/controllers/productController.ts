@@ -9,8 +9,9 @@ const attachUploads = (req: Request) => {
 
   // FormData flattens everything to strings, so the structured fields arrive
   // JSON-encoded and have to be revived before Mongoose sees them. `variants`
-  // has always needed this; `specs` and `careIcons` are the PDP fields.
-  for (const field of ['variants', 'specs', 'careIcons'] as const) {
+  // has always needed this; `specs`, `careIcons`, `sizeChart` and `materials`
+  // are the PDP / merchandising fields.
+  for (const field of ['variants', 'specs', 'careIcons', 'sizeChart', 'materials'] as const) {
     if (typeof req.body[field] === 'string') {
       try {
         req.body[field] = JSON.parse(req.body[field]);
@@ -49,6 +50,21 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   const products = await Product.find().sort({ createdAt: -1 });
   successResponse(res, 200, 'Products fetched successfully', products);
+});
+
+/**
+ * One product by id. Public, like `getProducts` — the storefront's size guide
+ * needs a single piece's chart and should not have to pull the whole catalogue
+ * to find it.
+ */
+export const getProductById = asyncHandler(async (req: Request, res: Response) => {
+  // An id that isn't a valid ObjectId makes findById throw a CastError, which
+  // would surface as a 500. A bad id in a URL is a 404, not a server fault.
+  const product = await Product.findById(req.params.id).catch(() => null);
+  if (!product) {
+    return errorResponse(res, 404, 'Product not found');
+  }
+  successResponse(res, 200, 'Product fetched successfully', product);
 });
 
 export const updateProduct = asyncHandler(async (req: Request, res: Response) => {
