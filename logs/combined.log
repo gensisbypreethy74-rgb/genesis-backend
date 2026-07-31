@@ -19,3 +19,4 @@
 {"level":"info","message":"📭 Email disabled (no SendGrid config). Skipping \"You’re on the list — Notes from the Studio\" to kukkudanish@gmail.com","service":"heedy-backend","timestamp":"2026-07-22 16:03:20"}
 {"level":"info","message":"📭 Email disabled (no SendGrid config). Skipping \"You’re on the list — Notes from the Studio\" to nived050@gmail.com","service":"heedy-backend","timestamp":"2026-07-29 12:06:06"}
 {"level":"info","message":"📭 Email disabled (no SendGrid config). Skipping \"You’re on the list — Notes from the Studio\" to naimanurin7@gmail.com","service":"heedy-backend","timestamp":"2026-07-29 12:07:50"}
+{"level":"info","message":"📭 Email disabled (no SendGrid config). Skipping \"You’re on the list — Notes from the Studio\" to footer-check@example.com","service":"heedy-backend","timestamp":"2026-07-30 19:30:30"}
