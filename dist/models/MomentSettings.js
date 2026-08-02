@@ -55,7 +55,6 @@ const DEFAULTS = {
         description: '',
         ctaLabel: 'View All Pieces',
         ctaHref: '/products',
-        productIds: [],
     },
 };
 const momentSettingsSchema = new mongoose_1.Schema({
@@ -72,7 +71,6 @@ const momentSettingsSchema = new mongoose_1.Schema({
         description: { type: String, default: DEFAULTS.seasonal.description },
         ctaLabel: { type: String, default: DEFAULTS.seasonal.ctaLabel },
         ctaHref: { type: String, default: DEFAULTS.seasonal.ctaHref },
-        productIds: { type: [String], default: [] },
     },
 }, { timestamps: true });
 exports.MomentSettings = mongoose_1.default.model('MomentSettings', momentSettingsSchema);

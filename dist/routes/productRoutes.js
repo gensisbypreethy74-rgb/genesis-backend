@@ -15,6 +15,7 @@ router.route('/')
     .post(...adminOnly, uploadMiddleware_1.upload.any(), productController_1.createProduct)
     .get(productController_1.getProducts);
 router.route('/:id')
+    .get(productController_1.getProductById)
     .put(...adminOnly, uploadMiddleware_1.upload.any(), productController_1.updateProduct)
     .delete(...adminOnly, productController_1.deleteProduct);
 exports.default = router;

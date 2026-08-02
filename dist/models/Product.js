@@ -56,6 +56,15 @@ const specSchema = new mongoose_1.Schema({
     label: { type: String, required: true, trim: true },
     value: { type: String, required: true, trim: true },
 }, { _id: false });
+const sizeChartRowSchema = new mongoose_1.Schema({
+    size: { type: String, required: true, trim: true },
+    // Centimetres. `min: 0` only rejects nonsense; a blank cell stays undefined
+    // so the storefront can drop the whole column.
+    bust: { type: Number, min: 0 },
+    waist: { type: Number, min: 0 },
+    hip: { type: Number, min: 0 },
+    length: { type: Number, min: 0 },
+}, { _id: false });
 const variantSchema = new mongoose_1.Schema({
     volume: { type: String, required: true },
     price: { type: Number, required: true },
@@ -66,7 +75,10 @@ const variantSchema = new mongoose_1.Schema({
 const productSchema = new mongoose_1.Schema({
     name: { type: String, required: true, trim: true },
     category: { type: String, required: true },
-    description: { type: String, required: true },
+    // Optional since the studio stopped collecting it: the form has no
+    // description field, so a required one would reject every new product.
+    // Existing values are left in place and still feed storefront search.
+    description: { type: String },
     variants: [variantSchema],
     starRating: { type: Number, default: 0, min: 0, max: 5 },
     reviewsCount: { type: Number, default: 0 },
@@ -86,6 +98,7 @@ const productSchema = new mongoose_1.Schema({
         default: '',
     },
     limited: { type: Boolean, default: false },
+    materials: { type: [String], default: undefined },
     // Product detail page
     tagline: { type: String, trim: true },
     fitNote: { type: String, trim: true },
@@ -93,6 +106,7 @@ const productSchema = new mongoose_1.Schema({
     studioNotes: { type: String, trim: true },
     materialText: { type: String, trim: true },
     specs: { type: [specSchema], default: undefined },
+    sizeChart: { type: [sizeChartRowSchema], default: undefined },
     fitFooter: { type: String, trim: true },
     careIcons: { type: [{ type: String, enum: exports.CARE_ICONS }], default: undefined },
     careText: { type: String, trim: true },
