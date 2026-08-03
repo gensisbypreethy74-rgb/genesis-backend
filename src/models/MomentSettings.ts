@@ -55,7 +55,7 @@ const DEFAULTS = {
     heading: 'Named for the flowers of the season.',
     description: '',
     ctaLabel: 'View All Pieces',
-    ctaHref: '/products',
+    ctaHref: '/products?category=the-moment',
   },
 };
 
