@@ -11,7 +11,7 @@ const attachUploads = (req: Request) => {
   // JSON-encoded and have to be revived before Mongoose sees them. `variants`
   // has always needed this; `specs`, `careIcons`, `sizeChart` and `materials`
   // are the PDP / merchandising fields.
-  for (const field of ['variants', 'specs', 'careIcons', 'sizeChart', 'materials'] as const) {
+  for (const field of ['variants', 'specs', 'careIcons', 'sizeChart', 'sizeCharts', 'materials'] as const) {
     if (typeof req.body[field] === 'string') {
       try {
         req.body[field] = JSON.parse(req.body[field]);

@@ -28,11 +28,18 @@ export interface ISpec {
  * the same fact, free to drift the moment someone edits one and not the other.
  * Every measurement is optional: the storefront drops a column no row fills.
  */
+export interface ISizeChartGroup {
+  title: string;              // editable heading, e.g. "Top & Dresses" / "Bottom"
+  fields?: string[];          // which measurement columns this chart shows
+  rows: ISizeChartRow[];
+}
+
 export interface ISizeChartRow {
   size: string;
   bust?: number;
   waist?: number;
   hip?: number;
+  inseam?: number;
   length?: number;
 }
 
@@ -93,7 +100,8 @@ export interface IProduct extends Document {
   studioNotes?: string;     // the paragraph under STUDIO NOTES
   materialText?: string;    // opening line of MATERIAL & FIT
   specs?: ISpec[];          // the label/value table under materialText
-  sizeChart?: ISizeChartRow[]; // body measurements per size, in cm (see ISizeChartRow)
+  sizeChart?: ISizeChartRow[]; // legacy single chart (kept for older pieces)
+  sizeCharts?: ISizeChartGroup[]; // named charts, e.g. "Top & Dresses", "Bottom"
   fitFooter?: string;       // "Unlined. Non-stretch. Side-seam pockets."
   careIcons?: CareIcon[];   // symbols rendered above careText
   careText?: string;        // the CARE paragraph
@@ -116,7 +124,17 @@ const sizeChartRowSchema = new Schema<ISizeChartRow>(
     bust: { type: Number, min: 0 },
     waist: { type: Number, min: 0 },
     hip: { type: Number, min: 0 },
+    inseam: { type: Number, min: 0 },
     length: { type: Number, min: 0 },
+  },
+  { _id: false }
+);
+
+const sizeChartGroupSchema = new Schema<ISizeChartGroup>(
+  {
+    title: { type: String, required: true, trim: true },
+    fields: { type: [String], default: undefined },
+    rows: { type: [sizeChartRowSchema], default: [] },
   },
   { _id: false }
 );
@@ -166,6 +184,7 @@ const productSchema = new Schema<IProduct>(
     materialText: { type: String, trim: true },
     specs: { type: [specSchema], default: undefined },
     sizeChart: { type: [sizeChartRowSchema], default: undefined },
+    sizeCharts: { type: [sizeChartGroupSchema], default: undefined },
     fitFooter: { type: String, trim: true },
     careIcons: { type: [{ type: String, enum: CARE_ICONS }], default: undefined },
     careText: { type: String, trim: true },
