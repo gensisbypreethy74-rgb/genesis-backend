@@ -1,2 +1,6 @@
 .env
 node_modules
+
+# Compiled output — built fresh on deploy from src (see the "build" / "postinstall"
+# scripts), never committed. Render's build step recompiles it.
+dist
