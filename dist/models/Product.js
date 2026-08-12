@@ -63,7 +63,13 @@ const sizeChartRowSchema = new mongoose_1.Schema({
     bust: { type: Number, min: 0 },
     waist: { type: Number, min: 0 },
     hip: { type: Number, min: 0 },
+    inseam: { type: Number, min: 0 },
     length: { type: Number, min: 0 },
+}, { _id: false });
+const sizeChartGroupSchema = new mongoose_1.Schema({
+    title: { type: String, required: true, trim: true },
+    fields: { type: [String], default: undefined },
+    rows: { type: [sizeChartRowSchema], default: [] },
 }, { _id: false });
 const variantSchema = new mongoose_1.Schema({
     volume: { type: String, required: true },
@@ -107,6 +113,7 @@ const productSchema = new mongoose_1.Schema({
     materialText: { type: String, trim: true },
     specs: { type: [specSchema], default: undefined },
     sizeChart: { type: [sizeChartRowSchema], default: undefined },
+    sizeCharts: { type: [sizeChartGroupSchema], default: undefined },
     fitFooter: { type: String, trim: true },
     careIcons: { type: [{ type: String, enum: exports.CARE_ICONS }], default: undefined },
     careText: { type: String, trim: true },
