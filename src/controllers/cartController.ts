@@ -12,6 +12,9 @@ const resolveSize = (product: any, size?: string): string | undefined => {
   return product?.variants?.[0]?.volume;
 };
 
+// Checkout accepts at most 20 of one piece per line, so the cart never holds more.
+const MAX_PER_LINE = 20;
+
 // Get Cart
 export const getCart = asyncHandler(async (req: Request, res: Response) => {
   let cart = await Cart.findOne({ user: req.user?._id }).populate('items.product');
@@ -52,10 +55,13 @@ export const getCart = asyncHandler(async (req: Request, res: Response) => {
 // Add Item to Cart
 export const addToCart = asyncHandler(async (req: Request, res: Response) => {
   const { productId, quantity, size } = req.body;
-  
+
   const product = await Product.findById(productId);
-  if (!product) {
+  if (!product || product.status === 'Archived') {
     return errorResponse(res, 404, 'Product not found');
+  }
+  if (size && !product.variants.some((v) => v.volume === size)) {
+    return errorResponse(res, 400, `${product.name} is not available in size ${size}.`);
   }
 
   let cart = await Cart.findOne({ user: req.user?._id });
@@ -70,7 +76,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
   );
 
   if (existingItemIndex > -1) {
-    cart.items[existingItemIndex].quantity += quantity;
+    cart.items[existingItemIndex].quantity = Math.min(MAX_PER_LINE, cart.items[existingItemIndex].quantity + quantity);
   } else {
     cart.items.push({ product: productId, quantity, size: resolvedSize });
   }
@@ -140,13 +146,17 @@ export const mergeCart = asyncHandler(async (req: Request, res: Response) => {
   }
 
   if (Array.isArray(items)) {
+    const products = await Product.find({ _id: { $in: items.map((i) => i.productId) } });
+    const byId = new Map(products.map((p) => [p._id.toString(), p]));
+
     for (const incoming of items) {
       const quantity = Number(incoming?.quantity);
       if (!incoming?.productId || !quantity || quantity < 1) continue;
 
-      // Skip items whose product no longer exists.
-      const product = await Product.findById(incoming.productId);
-      if (!product) continue;
+      // Skip items whose product no longer exists, is hidden, or lost that size.
+      const product = byId.get(incoming.productId);
+      if (!product || product.status === 'Archived') continue;
+      if (incoming.size && !product.variants.some((v) => v.volume === incoming.size)) continue;
 
       const resolvedSize = resolveSize(product, incoming.size);
 
@@ -155,7 +165,7 @@ export const mergeCart = asyncHandler(async (req: Request, res: Response) => {
       );
 
       if (existingItemIndex > -1) {
-        cart.items[existingItemIndex].quantity += quantity;
+        cart.items[existingItemIndex].quantity = Math.min(MAX_PER_LINE, cart.items[existingItemIndex].quantity + quantity);
       } else {
         cart.items.push({ product: incoming.productId as any, quantity, size: resolvedSize });
       }

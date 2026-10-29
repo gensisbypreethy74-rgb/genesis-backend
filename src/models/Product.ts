@@ -11,6 +11,8 @@ interface IVariant {
   oldPrice?: number;
   color?: string;
   images: string[];
+  /** Pieces left in this size. Unset = not tracked (unlimited); 0 = sold out. */
+  stock?: number | null;
 }
 
 /** One row of the Material & Fit spec table, e.g. { label: 'Shoulder', value: '15 in' }. */
@@ -145,6 +147,7 @@ const variantSchema = new Schema<IVariant>({
   oldPrice: { type: Number },
   color: { type: String },
   images: [{ type: String }],
+  stock: { type: Number, min: 0 },
 });
 
 const productSchema = new Schema<IProduct>(
@@ -161,6 +164,8 @@ const productSchema = new Schema<IProduct>(
     offerText: { type: String },
     keyFeatures: { type: String },
     images: [{ type: String }],
+    // 'Archived' hides the piece from the shop without deleting it (orders keep pointing at it).
+    // No enum: legacy documents may carry other values.
     status: { type: String, default: 'In Stock' },
     showOnLandingPage: { type: Boolean, default: false },
     garmentType: { type: String, trim: true },

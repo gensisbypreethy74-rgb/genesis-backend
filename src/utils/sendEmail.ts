@@ -1,4 +1,4 @@
-import logger from './logger';
+import logger, { maskEmail } from './logger';
 
 // Email configuration interface
 interface EmailOptions {
@@ -6,6 +6,7 @@ interface EmailOptions {
   subject: string;
   message?: string;
   html?: string;
+  headers?: Record<string, string>;
 }
 
 const SENDGRID_ENDPOINT = 'https://api.sendgrid.com/v3/mail/send';
@@ -37,18 +38,20 @@ export const sendEmail = async (options: EmailOptions): Promise<any> => {
     throw new Error('Invalid recipient email address');
   }
 
+  const to = maskEmail(options.email);
   if (!isEmailConfigured()) {
-    logger.info(`📭 Email disabled (no SendGrid config). Skipping "${options.subject}" to ${options.email}`);
+    logger.info(`Email disabled (no SendGrid config). Skipping "${options.subject}" to ${to}`);
     return { success: true, provider: 'disabled', skipped: true };
   }
 
   const fromEmail = process.env.SENDGRID_FROM_EMAIL!.trim();
-  const fromName = (process.env.FROM_NAME || 'Genesis Boutique').trim();
+  const fromName = (process.env.FROM_NAME || 'Genesis by Preethy').trim();
 
   const payload = {
     personalizations: [{ to: [{ email: options.email }] }],
     from: { email: fromEmail, name: fromName },
     subject: options.subject,
+    ...(options.headers ? { headers: options.headers } : {}),
     content: [
       options.html
         ? { type: 'text/html', value: options.html }
@@ -68,31 +71,15 @@ export const sendEmail = async (options: EmailOptions): Promise<any> => {
 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      logger.error(`SendGrid send failed (${res.status}) for ${options.email}: ${detail}`);
+      logger.error(`SendGrid send failed (${res.status}) for ${to}: ${detail}`);
       return { success: false, provider: 'sendgrid', status: res.status };
     }
 
-    logger.info(`✉️  Email sent to ${options.email}: "${options.subject}"`);
+    logger.info(`Email sent to ${to}: "${options.subject}"`);
     return { success: true, provider: 'sendgrid', messageId: res.headers.get('x-message-id') };
   } catch (err: any) {
     // Swallow the error so callers (order/payment flows) are never broken by email.
-    logger.error(`SendGrid request error for ${options.email}: ${err?.message || err}`);
+    logger.error(`SendGrid request error for ${to}: ${err?.message || err}`);
     return { success: false, provider: 'sendgrid', error: err?.message };
   }
-};
-
-/**
- * Report whether email delivery is available (configured).
- */
-export const verifyEmailConnection = async (): Promise<boolean> => {
-  const configured = isEmailConfigured();
-  logger.info(configured ? '✉️  Email delivery is configured (SendGrid)' : '📭 Email delivery is disabled');
-  return configured;
-};
-
-/**
- * Close email connection (no-op, kept for compatibility).
- */
-export const closeEmailConnection = (): void => {
-  // No-op — HTTP API needs no teardown.
 };

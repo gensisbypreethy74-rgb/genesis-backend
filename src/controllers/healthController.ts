@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse } from '../utils/responseHandler';
 
 export const checkHealth = asyncHandler(async (req: Request, res: Response) => {
-  successResponse(res, 200, 'Heedy API is up and running!', {
+  successResponse(res, 200, 'Genesis by Preethy API is up and running!', {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });

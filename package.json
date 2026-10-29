@@ -1,12 +1,13 @@
 {
-  "name": "heedy-backend",
+  "name": "genesis-backend",
   "version": "1.0.0",
-  "description": "Professional backend for Heedy admin dashboard",
+  "description": "API for the Genesis by Preethy storefront and admin",
   "main": "dist/server.js",
   "scripts": {
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "test": "node --require ts-node/register/transpile-only --test --test-concurrency=1 \"test/**/*.test.ts\"",
     "postinstall": "npm run build"
   },
   "dependencies": {
@@ -27,7 +28,6 @@
     "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0",
     "razorpay": "^2.9.6",
-    "uuid": "^9.0.1",
     "winston": "^3.19.0",
     "zod": "^3.23.4"
   },
@@ -39,8 +39,10 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.12.7",
-    "@types/uuid": "^9.0.8",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5"
+  },
+  "overrides": {
+    "qs": "6.16.0"
   }
 }

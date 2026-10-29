@@ -19,6 +19,6 @@ router.route('/addresses/:addressId')
 
 // Admin routes
 router.get('/admin/customers', protect, authorize('admin', 'superadmin'), getAllCustomers);
-router.put('/admin/customers/:id/toggle-status', protect, authorize('admin', 'superadmin'), toggleCustomerStatus);
+router.put('/admin/customers/:id/toggle-status', protect, authorize('admin', 'superadmin'), validate(schemas.mongoId), toggleCustomerStatus);
 
 export default router;

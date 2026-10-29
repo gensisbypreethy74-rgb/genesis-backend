@@ -18,30 +18,21 @@ export const validate = (schema: ZodSchema) => {
           field: err.path.join('.'),
           message: err.message,
         }));
-        return errorResponse(res, 400, 'Validation failed', errors);
+        // Lead with the first concrete problem; the full list stays in `errors`.
+        return errorResponse(res, 400, errors[0]?.message || 'Validation failed', errors);
       }
       return errorResponse(res, 400, 'Invalid request data');
     }
   };
 };
 
+const objectId = (label = 'ID') => z.string().regex(/^[0-9a-fA-F]{24}$/, `Invalid ${label}`);
+const size = z.string().max(40).optional();
+const quantity = z.number({ invalid_type_error: 'Quantity must be a number' }).int('Quantity must be a whole number');
+
 // Common validation schemas
 export const schemas = {
   // Auth schemas
-  register: z.object({
-    body: z.object({
-      name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-      email: z.string().email('Invalid email address'),
-      password: z.string()
-        .min(8, 'Password must be at least 8 characters')
-        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-        .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-        .regex(/[0-9]/, 'Password must contain at least one number')
-        .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
-      phone: z.string().optional(),
-    }),
-  }),
-
   login: z.object({
     body: z.object({
       email: z.string().email('Invalid email address'),
@@ -49,67 +40,80 @@ export const schemas = {
     }),
   }),
 
-  verifyOtp: z.object({
+  googleAuth: z.object({
     body: z.object({
-      email: z.string().email('Invalid email address'),
-      otp: z.string().length(6, 'OTP must be 6 digits').regex(/^\d+$/, 'OTP must contain only numbers'),
-    }),
+      accessToken: z.string().min(1).max(4096).optional(),
+      credential: z.string().min(1).max(4096).optional(),
+      mode: z.enum(['signin', 'register']).optional(),
+    }).refine((b) => b.accessToken || b.credential, { message: 'Google credential is required' }),
   }),
 
-  // Product schemas
-  createProduct: z.object({
-    body: z.object({
-      name: z.string().min(1, 'Product name is required').max(200),
-      description: z.string().min(10, 'Description must be at least 10 characters').max(5000),
-      price: z.number().positive('Price must be positive').or(z.string().transform(Number)),
-      category: z.string().min(1, 'Category is required'),
-      stock: z.number().int().nonnegative('Stock cannot be negative').or(z.string().transform(Number)),
-      images: z.array(z.string().url()).optional(),
-    }),
-  }),
-
-  updateProduct: z.object({
-    params: z.object({
-      id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid product ID'),
-    }),
-    body: z.object({
-      name: z.string().min(1).max(200).optional(),
-      description: z.string().min(10).max(5000).optional(),
-      price: z.number().positive().or(z.string().transform(Number)).optional(),
-      category: z.string().optional(),
-      stock: z.number().int().nonnegative().or(z.string().transform(Number)).optional(),
-      images: z.array(z.string().url()).optional(),
-    }),
-  }),
-
-  // Order schemas
+  // Checkout: the client names what it wants; the server prices it.
   createOrder: z.object({
     body: z.object({
-      total: z.number().positive('Total must be positive').max(1000000, 'Total amount too large'),
+      items: z.array(z.object({
+        product: objectId('product ID'),
+        size,
+        quantity: quantity.min(1, 'Quantity must be at least 1').max(20, 'At most 20 of one piece per order'),
+      })).min(1, 'Your bag is empty').max(50, 'Too many items in one order'),
+      addressId: objectId('address'),
+      paymentMethod: z.enum(['razorpay', 'cod']),
     }),
   }),
 
   verifyPayment: z.object({
     body: z.object({
-      razorpay_order_id: z.string().min(1),
-      razorpay_payment_id: z.string().min(1),
-      razorpay_signature: z.string().min(1),
+      razorpay_order_id: z.string().min(1).max(100),
+      razorpay_payment_id: z.string().min(1).max(100),
+      razorpay_signature: z.string().min(1).max(256),
+    }),
+  }),
+
+  orderStatus: z.object({
+    params: z.object({ id: objectId('order ID') }),
+    body: z.object({ orderStatus: z.enum(['processing', 'shipped', 'delivered', 'cancelled']) }),
+  }),
+
+  paymentStatus: z.object({
+    params: z.object({ id: objectId('order ID') }),
+    body: z.object({ paymentStatus: z.literal('refunded') }),
+  }),
+
+  trackOrder: z.object({
+    body: z.object({
+      orderId: objectId('order ID'),
+      email: z.string().email('Enter the email used on the order'),
+    }),
+  }),
+
+  // Cart schemas
+  cartAdd: z.object({
+    body: z.object({
+      productId: objectId('product ID'),
+      quantity: quantity.min(1, 'Quantity must be at least 1').max(20, 'At most 20 of one piece'),
+      size,
+    }),
+  }),
+
+  cartUpdate: z.object({
+    body: z.object({
+      productId: objectId('product ID'),
+      quantity: quantity.min(0).max(20, 'At most 20 of one piece'),
+      size,
+    }),
+  }),
+
+  cartRemove: z.object({
+    body: z.object({ productId: objectId('product ID'), size }),
+  }),
+
+  cartMerge: z.object({
+    body: z.object({
       items: z.array(z.object({
-        product: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid product ID'),
-        quantity: z.number().int().positive(),
-        price: z.number().positive(),
-      })).min(1, 'At least one item is required'),
-      shippingAddress: z.object({
-        street: z.string().optional(),
-        city: z.string().min(1, 'City is required'),
-        state: z.string().min(1, 'State is required'),
-        zipCode: z.string().optional(),
-        country: z.string().optional(),
-      }),
-      subtotal: z.number().positive(),
-      discount: z.number().nonnegative(),
-      shippingFee: z.number().nonnegative(),
-      total: z.number().positive(),
+        productId: objectId('product ID'),
+        quantity: quantity.min(1).max(20),
+        size,
+      })).max(50, 'Too many items to merge'),
     }),
   }),
 
@@ -121,14 +125,15 @@ export const schemas = {
     }),
   }),
 
+  // Matches the storefront address forms and what an order needs for delivery.
   addAddress: z.object({
     body: z.object({
       street: z.string().max(200).optional(),
       apartment: z.string().max(100).optional(),
       landmark: z.string().max(100).optional(),
-      city: z.string().min(1, 'City is required').max(100),
-      state: z.string().min(1, 'State is required').max(100),
-      zipCode: z.string().max(20).optional(),
+      city: z.string().trim().min(1, 'City is required').max(100),
+      state: z.string().trim().min(1, 'State is required').max(100),
+      zipCode: z.string().trim().regex(/^\d{5,6}$/, 'Enter a valid 5-6 digit PIN code'),
       country: z.string().max(100).optional(),
     }),
   }),
@@ -141,10 +146,12 @@ export const schemas = {
     }),
   }),
 
+  siteSettings: z.object({
+    body: z.object({ whatsappNumber: z.string().max(30).optional() }),
+  }),
+
   // ID parameter validation
   mongoId: z.object({
-    params: z.object({
-      id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid ID format'),
-    }),
+    params: z.object({ id: objectId() }),
   }),
 };

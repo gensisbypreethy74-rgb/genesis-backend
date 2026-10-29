@@ -5,7 +5,7 @@ import { successResponse, errorResponse } from '../utils/responseHandler';
 
 // Attach uploaded files to the product (imageFiles) and to each variant (variantImages_<index>)
 const attachUploads = (req: Request) => {
-  const files = (Array.isArray(req.files) ? req.files : []) as Express.Multer.File[];
+  const files = (Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat()) as Express.Multer.File[];
 
   // FormData flattens everything to strings, so the structured fields arrive
   // JSON-encoded and have to be revived before Mongoose sees them. `variants`
@@ -47,8 +47,10 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   successResponse(res, 201, 'Product created successfully', product);
 });
 
+// Archived pieces are hidden from the shop; the admin passes `?all=1` to see them.
 export const getProducts = asyncHandler(async (req: Request, res: Response) => {
-  const products = await Product.find().sort({ createdAt: -1 });
+  const filter = req.query.all === '1' ? {} : { status: { $ne: 'Archived' } };
+  const products = await Product.find(filter).sort({ createdAt: -1 });
   successResponse(res, 200, 'Products fetched successfully', products);
 });
 

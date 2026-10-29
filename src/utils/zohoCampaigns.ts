@@ -1,18 +1,19 @@
 import { ENV } from '../config/env';
-import logger from './logger';
+import logger, { maskEmail } from './logger';
 
 /**
  * Zoho Campaigns newsletter integration.
  *
- * Adds subscribers to the "Genesis Newsletter" mailing list via the Campaigns
- * listsubscribe API. Access tokens are short-lived (1 hour), so we mint them on
- * demand from the long-lived refresh token and cache them in memory.
+ * Adds subscribers to (and removes them from) the "Genesis Newsletter" mailing
+ * list via the Campaigns listsubscribe / listunsubscribe APIs. Access tokens are
+ * short-lived (1 hour), so we mint them on demand from the long-lived refresh
+ * token and cache them in memory.
  *
  * IMPORTANT — required OAuth scope:
- *   The listsubscribe endpoint requires `ZohoCampaigns.contact.UPDATE`
+ *   These endpoints require `ZohoCampaigns.contact.UPDATE`
  *   (or `ZohoCampaigns.contact.ALL`). A refresh token generated with only
  *   `ZohoCampaigns.contact.CREATE`/`READ` will authenticate but every
- *   listsubscribe call returns HTTP 401. Regenerate the refresh token with the
+ *   call returns HTTP 401. Regenerate the refresh token with the
  *   UPDATE scope if you see persistent 401s here.
  */
 
@@ -56,13 +57,8 @@ const getAccessToken = async (forceRefresh = false): Promise<string> => {
 
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok || !data.access_token) {
-    console.log('   🔑 [Zoho] token refresh FAILED:', JSON.stringify(data));
-    throw new Error(
-      `Zoho token refresh failed: ${data.error || res.status} (${res.statusText})`
-    );
+    throw new Error(`Zoho token refresh failed: ${data.error || res.status} (${res.statusText})`);
   }
-
-  console.log(`   🔑 [Zoho] access token obtained. granted scope: "${data.scope}"`);
 
   // expires_in is in seconds; refresh 60s early to avoid edge-of-expiry races.
   const ttlMs = (Number(data.expires_in) || 3600) * 1000;
@@ -77,29 +73,25 @@ export interface ZohoSubscribeResult {
 }
 
 /**
- * Subscribe an email to the configured Zoho Campaigns list.
+ * Subscribe or unsubscribe an email on the configured Zoho Campaigns list.
  * Never throws — returns a result object so callers can treat Zoho as
  * best-effort and keep the user-facing flow resilient.
  */
-export const subscribeToZohoList = async (
+const callZohoList = async (
+  action: 'listsubscribe' | 'listunsubscribe',
   email: string,
   source?: string
 ): Promise<ZohoSubscribeResult> => {
   if (!isZohoConfigured()) {
-    console.log('   ⚠️  [Zoho] not configured (missing client id/secret/refresh token/list key) — skipping');
     return { ok: false, skipped: true, message: 'Zoho not configured' };
   }
 
-  const endpoint = `${campaignsBase()}/api/v1.1/json/listsubscribe`;
-
   const doRequest = async (token: string): Promise<Response> => {
-    const url = new URL(endpoint);
+    const url = new URL(`${campaignsBase()}/api/v1.1/json/${action}`);
     url.searchParams.set('resfmt', 'JSON');
     url.searchParams.set('listkey', ENV.ZOHO_LIST_KEY);
     url.searchParams.set('contactinfo', JSON.stringify({ 'Contact Email': email }));
     if (source) url.searchParams.set('source', source);
-
-    console.log(`   📡 [Zoho] POST ${endpoint}  (list=${ENV.ZOHO_LIST_KEY.slice(0, 8)}…, email=${email})`);
     return fetch(url.toString(), {
       method: 'POST',
       headers: { Authorization: `Zoho-oauthtoken ${token}` },
@@ -125,12 +117,9 @@ export const subscribeToZohoList = async (
       data = null; // Zoho returns an HTML page for gateway-level 401s
     }
 
-    console.log(`   📥 [Zoho] response HTTP ${res.status}:`, data ? JSON.stringify(data) : raw.slice(0, 120));
-
     // Zoho signals success with code "0".
     if (res.ok && data && String(data.code) === '0') {
-      console.log('   ✅ [Zoho] contact subscribed to the list');
-      return { ok: true, message: data.message || 'Subscribed to Zoho list' };
+      return { ok: true, message: data.message || 'Done' };
     }
 
     const detail =
@@ -138,22 +127,13 @@ export const subscribeToZohoList = async (
       (res.status === 401
         ? 'Unauthorized — refresh token likely missing the ZohoCampaigns.contact.UPDATE scope'
         : `HTTP ${res.status}`);
-    if (res.status === 401) {
-      console.log('   ❌ [Zoho] 401 Unauthorized — the refresh token does NOT have the ZohoCampaigns.contact.UPDATE scope required by listsubscribe. Regenerate it with that scope.');
-    }
-    logger.warn('Zoho listsubscribe did not succeed', {
-      event: 'ZOHO_SUBSCRIBE_FAILED',
-      email,
-      status: res.status,
-      detail,
-    });
+    logger.warn(`Zoho ${action} did not succeed for ${maskEmail(email)}: ${detail}`);
     return { ok: false, message: String(detail) };
   } catch (err: any) {
-    logger.error('Zoho listsubscribe error', {
-      event: 'ZOHO_SUBSCRIBE_ERROR',
-      email,
-      error: err?.message || String(err),
-    });
+    logger.error(`Zoho ${action} error for ${maskEmail(email)}: ${err?.message || err}`);
     return { ok: false, message: err?.message || 'Zoho request failed' };
   }
 };
+
+export const subscribeToZohoList = (email: string, source?: string) => callZohoList('listsubscribe', email, source);
+export const unsubscribeFromZohoList = (email: string) => callZohoList('listunsubscribe', email);

@@ -1,420 +1,327 @@
 import { Request, Response } from 'express';
-import Razorpay from 'razorpay';
-import crypto from 'crypto';
-import Order from '../models/Order';
-import { Product } from '../models/Product';
+import Order, { IOrder } from '../models/Order';
+import { User } from '../models/User';
+import { asyncHandler } from '../utils/asyncHandler';
+import { successResponse, errorResponse } from '../utils/responseHandler';
 import { sendEmail } from '../utils/sendEmail';
-import dotenv from 'dotenv';
-import jwt from 'jsonwebtoken';
-dotenv.config();
+import logger from '../utils/logger';
+import { ENV, mockPaymentsAllowed } from '../config/env';
+import { razorpay, verifyPaymentSignature, verifyWebhookSignature } from '../utils/razorpay';
+import { priceCheckout, markOrderPaid, onlineAmountPaise, CheckoutError } from '../utils/orders';
+import { renderOrderEmail, BRAND_NAME } from '../utils/orderEmail';
 
-const razorpayInstance = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'dummy_key_id',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_key_secret',
-});
+const MOCK_ORDER_PREFIX = 'mock_order_';
 
-// Sends the order confirmation email. Shared by both the online (Razorpay) and COD flows.
-const sendOrderConfirmationEmail = async (user: any, order: any) => {
+// Unpaid checkouts never show up as orders, for customers or the studio.
+const PLACED = { orderStatus: { $ne: 'awaiting_payment' } };
+
+const ADMIN_ORDER_POPULATE = [
+  { path: 'user', select: 'name email phone' },
+  { path: 'items.product', select: 'name images variants' },
+];
+
+// Sends the order confirmation email. Never throws: email must not break checkout.
+const sendConfirmation = async (order: IOrder) => {
   try {
-    if (!user || !user.email) {
-      console.log('Skipping order confirmation email because user or user.email is missing.');
-      return;
-    }
-
-    const autoLoginToken = jwt.sign(
-      { id: user._id, role: user.role || 'customer' },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '7d' }
-    );
-
-    const itemsHtml = order.items.map((item: any) => {
-      const product = item.product;
-      return `
-        <tr>
-          <td style="padding: 15px 10px; border-bottom: 1px solid #eaeaea;">
-            <p style="margin: 0; font-weight: bold; color: #111827; font-size: 15px;">${product?.name || 'Product'}</p>
-            <p style="margin: 5px 0 0; color: #6b7280; font-size: 13px;">Qty: ${item.quantity}</p>
-          </td>
-          <td style="padding: 15px 0; border-bottom: 1px solid #eaeaea; text-align: right;">
-            <p style="margin: 0; font-weight: bold; color: #111827; font-size: 15px;">₹${item.price}</p>
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-    const isCod = order.paymentMethod === 'cod';
-    const paymentLine = isCod
-      ? `<p style="margin: 10px 0 0 0; color: #374151; font-size: 15px;"><strong>Payment:</strong> <span style="color: #111827;">Cash on Delivery</span></p>
-         <p style="margin: 6px 0 0 0; color: #374151; font-size: 14px;">Advance paid: <span style="color: #10b981; font-weight: bold;">₹${order.advanceAmount}</span> &nbsp;·&nbsp; Balance due on delivery: <span style="color: #111827; font-weight: bold;">₹${order.balanceAmount}</span></p>`
-      : '';
-
-    const htmlMessage = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 10px; overflow: hidden; background-color: #ffffff;">
-        <div style="background-color: #111827; padding: 30px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase;">Heedy</h1>
-        </div>
-        <div style="padding: 40px 30px;">
-          <h2 style="color: #111827; font-size: 20px; margin-top: 0; margin-bottom: 20px;">Order Confirmation</h2>
-          <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
-            Dear <strong>${user.name}</strong>,<br><br>
-            Thank you for your purchase! Your order has been placed successfully and is now being processed.
-          </p>
-          <div style="background-color: #f9fafb; border: 1px solid #f3f4f6; border-radius: 8px; padding: 20px; margin-bottom: 30px; text-align: center;">
-            <p style="margin: 0 0 10px 0; color: #374151; font-size: 15px;"><strong>Order ID:</strong> <span style="color: #111827;">${order._id}</span></p>
-            <p style="margin: 0; color: #374151; font-size: 15px;"><strong>Order Date:</strong> <span style="color: #111827;">${String(order.createdAt?.getDate() || new Date().getDate()).padStart(2, '0')}/${String((order.createdAt?.getMonth() || new Date().getMonth()) + 1).padStart(2, '0')}/${order.createdAt?.getFullYear() || new Date().getFullYear()}</span></p>
-            ${paymentLine}
-          </div>
-
-          <h3 style="color: #111827; font-size: 18px; margin-bottom: 15px; border-bottom: 2px solid #f3f4f6; padding-bottom: 10px;">Order Details</h3>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
-
-          <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="padding-bottom: 10px; color: #6b7280; font-size: 14px;">Subtotal:</td>
-                <td style="padding-bottom: 10px; color: #111827; font-weight: bold; font-size: 14px; text-align: right;">₹${order.subtotal}</td>
-              </tr>
-              ${order.discount > 0 ? `
-              <tr>
-                <td style="padding-bottom: 10px; color: #6b7280; font-size: 14px;">Discount:</td>
-                <td style="padding-bottom: 10px; color: #10b981; font-weight: bold; font-size: 14px; text-align: right;">-₹${order.discount}</td>
-              </tr>
-              ` : ''}
-              <tr>
-                <td style="padding-bottom: 15px; color: #6b7280; font-size: 14px;">Shipping:</td>
-                <td style="padding-bottom: 15px; color: #111827; font-weight: bold; font-size: 14px; text-align: right;">${order.shippingFee > 0 ? `₹${order.shippingFee}` : 'Free'}</td>
-              </tr>
-              <tr>
-                <td style="padding-top: 15px; border-top: 1px solid #eaeaea; color: #111827; font-weight: bold; font-size: 16px;">Total:</td>
-                <td style="padding-top: 15px; border-top: 1px solid #eaeaea; color: #111827; font-weight: bold; font-size: 18px; text-align: right;">₹${order.total}</td>
-              </tr>
-            </table>
-          </div>
-
-          <p style="color: #4b5563; font-size: 15px; line-height: 1.6; margin-bottom: 30px;">
-            We will send you another email once your order has been shipped. If you have any questions, feel free to reply to this email.
-          </p>
-          <div style="text-align: center;">
-            <a href="${process.env.FRONTEND_URL || 'https://heedy-frontend.vercel.app'}/profile?token=${autoLoginToken}" style="background-color: #111827; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Order Details</a>
-          </div>
-        </div>
-        <div style="background-color: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #eaeaea;">
-          <p style="color: #9ca3af; font-size: 13px; margin: 0;">© ${new Date().getFullYear()} Heedy. All rights reserved.</p>
-        </div>
-      </div>
-    `;
-
+    const user = await User.findById(order.user).select('name email');
+    if (!user?.email) return;
     await sendEmail({
       email: user.email,
-      subject: 'Order Confirmation - Heedy',
-      html: htmlMessage
+      subject: `Order Confirmed · ${BRAND_NAME}`,
+      html: renderOrderEmail({
+        order,
+        customerName: user.name,
+        heading: 'Order Confirmation',
+        message: 'Thank you for your purchase! Your order has been placed successfully and is now being processed.',
+        ctaLabel: 'View Order Details',
+      }),
     });
-    console.log('Order confirmation email process completed without throwing errors.');
-  } catch (emailErr) {
-    console.error('Error sending confirmation email:', emailErr);
+  } catch (err: any) {
+    logger.error(`Order confirmation email failed for ${order._id}: ${err?.message || err}`);
   }
 };
 
-// Create Order — Only creates a Razorpay order, does NOT save to DB yet
-export const createOrder = async (req: Request, res: Response) => {
+// Shared by the browser verify call and the webhook: settle once, email once.
+const settlePaid = async (order: IOrder, paymentId: string, signature?: string) => {
+  const result = await markOrderPaid(order._id, { paymentId, signature });
+  if (result?.fresh && result.order) await sendConfirmation(result.order);
+  return result?.order ?? null;
+};
+
+// Create Order — prices the bag on the server, opens the Razorpay order for
+// that amount, and records an awaiting_payment order to settle later.
+export const createOrder = asyncHandler(async (req: Request, res: Response) => {
+  const { items, addressId, paymentMethod } = req.body;
+  const user = req.user!;
+
+  const address = user.addresses?.find((a) => a._id?.toString() === addressId);
+  if (!address) {
+    return errorResponse(res, 404, 'Please choose a saved shipping address.');
+  }
+  if (!address.city?.trim() || !address.state?.trim() || !/^\d{5,6}$/.test(address.zipCode?.trim() || '')) {
+    return errorResponse(res, 400, 'This address is missing a city, state or PIN code. Please edit it before paying.');
+  }
+
+  let priced: Awaited<ReturnType<typeof priceCheckout>>;
   try {
-    const { total } = req.body;
-
-    let razorpayOrder;
-    let isMock = false;
-
-    // Razorpay requires minimum ₹1 (100 paise)
-    if (!process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID === 'dummy_key_id' || total < 1) {
-      razorpayOrder = {
-        id: `mock_order_${Date.now()}`,
-        amount: Math.round(total * 100),
-        currency: 'INR'
-      };
-      isMock = true;
-    } else {
-      const options = {
-        amount: Math.round(total * 100),
-        currency: "INR",
-        receipt: `receipt_order_${Date.now()}`
-      };
-      razorpayOrder = await razorpayInstance.orders.create(options);
-    }
-
-    // No DB save here — order saved only after payment verified
-    res.status(200).json({
-      success: true,
-      data: {
-        razorpayOrder,
-        isMock,
-        key_id: process.env.RAZORPAY_KEY_ID // Return the key used to generate the order to prevent mismatch
-      }
-    });
-
-  } catch (error: any) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ success: false, message: error.message || 'Error creating order' });
+    priced = await priceCheckout(items, paymentMethod);
+  } catch (err) {
+    if (err instanceof CheckoutError) return errorResponse(res, err.statusCode, err.message);
+    throw err;
   }
-};
 
-// Verify Payment — Saves order to DB only after payment is confirmed
-export const verifyPayment = async (req: Request, res: Response) => {
+  const amount = Math.round(priced.payableNow * 100);
+  const isMock = mockPaymentsAllowed();
+  const razorpayOrder = isMock
+    ? { id: `${MOCK_ORDER_PREFIX}${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, amount, currency: 'INR' }
+    : await razorpay.orders.create({ amount, currency: 'INR', receipt: `rcpt_${Date.now()}` });
+
+  if (Number(razorpayOrder.amount) !== amount || razorpayOrder.currency !== 'INR') {
+    throw new Error(`Razorpay order ${razorpayOrder.id} came back with ${razorpayOrder.amount} ${razorpayOrder.currency}, expected ${amount} INR`);
+  }
+
+  const order = await Order.create({
+    user: user._id,
+    items: priced.items,
+    shippingAddress: {
+      street: address.street?.trim(),
+      apartment: address.apartment?.trim(),
+      landmark: address.landmark?.trim(),
+      city: address.city.trim(),
+      state: address.state.trim(),
+      zipCode: address.zipCode!.trim(),
+      country: address.country?.trim() || 'India',
+    },
+    subtotal: priced.subtotal,
+    discount: priced.discount,
+    shippingFee: priced.shippingFee,
+    total: priced.total,
+    paymentMethod,
+    advanceAmount: priced.advanceAmount,
+    balanceAmount: priced.balanceAmount,
+    paymentStatus: 'pending',
+    orderStatus: 'awaiting_payment',
+    razorpayOrderId: razorpayOrder.id,
+  });
+
+  successResponse(res, 200, 'Order created', {
+    orderId: order._id,
+    razorpayOrder: { id: razorpayOrder.id, amount, currency: 'INR' },
+    isMock,
+    key_id: isMock ? undefined : ENV.RAZORPAY_KEY_ID,
+    prefill: { name: user.name, email: user.email, contact: user.phone || '' },
+    amounts: {
+      subtotal: priced.subtotal,
+      discount: priced.discount,
+      shippingFee: priced.shippingFee,
+      total: priced.total,
+      advanceAmount: priced.advanceAmount,
+      balanceAmount: priced.balanceAmount,
+      payableNow: priced.payableNow,
+    },
+  });
+});
+
+// Verify Payment — checks Razorpay's signature for one of this customer's
+// awaiting orders and settles it. Idempotent: a replay returns the same order.
+export const verifyPayment = asyncHandler(async (req: Request, res: Response) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+  const order = await Order.findOne({ razorpayOrderId: razorpay_order_id, user: req.user!._id });
+  if (!order) {
+    return errorResponse(res, 404, 'Order not found');
+  }
+
+  // Simulated orders only exist (and only verify) in a dev setup without Razorpay keys.
+  const valid = razorpay_order_id.startsWith(MOCK_ORDER_PREFIX)
+    ? mockPaymentsAllowed()
+    : verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+  if (!valid) {
+    logger.warn(`Rejected payment verification for order ${order._id}`);
+    return errorResponse(res, 400, 'Invalid signature. Payment verification failed.');
+  }
+
+  let settled: IOrder | null = order;
+  if (order.orderStatus === 'awaiting_payment') {
+    settled = await settlePaid(order, razorpay_payment_id, razorpay_signature);
+  } else if (order.razorpayPaymentId && order.razorpayPaymentId !== razorpay_payment_id) {
+    return errorResponse(res, 409, 'This order has already been paid.');
+  }
+
+  await settled!.populate('items.product', 'name images variants');
+  successResponse(res, 200, 'Payment verified and order placed successfully', settled);
+});
+
+// Razorpay webhook — recovers payments whose browser never reached /verify.
+// Mounted in app.ts with a raw body parser; Razorpay retries any non-2xx.
+export const razorpayWebhook = async (req: Request, res: Response) => {
   try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      items,
-      shippingAddress,
-      subtotal,
-      discount,
-      shippingFee,
-      total,
-      paymentMethod,
-      advanceAmount,
-      balanceAmount,
-    } = req.body;
-
-    // 'cod' means only the 10% advance was paid online; the balance is due on delivery.
-    const isCod = paymentMethod === 'cod';
-
-    let paymentVerified = false;
-
-    if (razorpay_payment_id === 'mock_payment') {
-      paymentVerified = true;
-    } else {
-      const sign = razorpay_order_id + "|" + razorpay_payment_id;
-      const expectedSign = crypto
-        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || 'dummy_key_secret')
-        .update(sign.toString())
-        .digest("hex");
-      paymentVerified = razorpay_signature === expectedSign;
+    if (!ENV.RAZORPAY_WEBHOOK_SECRET) {
+      logger.error('Razorpay webhook received but RAZORPAY_WEBHOOK_SECRET is not set');
+      return res.status(503).json({ success: false, message: 'Webhook not configured' });
+    }
+    const raw = req.body;
+    if (!Buffer.isBuffer(raw) || !verifyWebhookSignature(raw, req.get('x-razorpay-signature'))) {
+      logger.warn('Rejected Razorpay webhook with a bad signature');
+      return res.status(400).json({ success: false, message: 'Invalid signature' });
     }
 
-    if (paymentVerified) {
-      // Payment confirmed — 
-      const newOrder = new Order({
-        user: req.user?._id,
-        items,
-        shippingAddress,
-        subtotal,
-        discount,
-        shippingFee,
-        total,
-        paymentMethod: isCod ? 'cod' : 'razorpay',
-        // COD advance is paid, but the full amount isn't settled until the balance is collected.
-        advanceAmount: isCod ? (advanceAmount || 0) : 0,
-        balanceAmount: isCod ? (balanceAmount || 0) : 0,
-        paymentStatus: isCod ? 'pending' : 'completed',
-        orderStatus: 'processing',
-        razorpayOrderId: razorpay_order_id,
-        razorpayPaymentId: razorpay_payment_id,
-        razorpaySignature: razorpay_payment_id === 'mock_payment' ? 'mock_signature' : razorpay_signature,
-      });
-
-      await newOrder.save();
-      await newOrder.populate('items.product', 'name images variants');
-
-      // Send Order Confirmation Email
-      await sendOrderConfirmationEmail(req.user, newOrder);
-
-      res.status(200).json({
-        success: true,
-        message: "Payment verified and order placed successfully",
-        data: newOrder
-      });
-    } else {
-      res.status(400).json({ success: false, message: "Invalid signature. Payment verification failed." });
+    const event = JSON.parse(raw.toString('utf8'));
+    // Only "money arrived" events settle an order. payment.failed (e.g. a
+    // failed first attempt before a successful retry) never undoes anything.
+    if (event.event !== 'payment.captured' && event.event !== 'order.paid') {
+      return res.status(200).json({ success: true, ignored: event.event });
     }
-  } catch (error: any) {
-    console.error('Error verifying payment:', error);
-    res.status(500).json({ success: false, message: error.message || 'Error verifying payment' });
+
+    const payment = event.payload?.payment?.entity;
+    const order = payment?.order_id ? await Order.findOne({ razorpayOrderId: payment.order_id }) : null;
+    if (!order) {
+      logger.warn(`Razorpay webhook ${event.event} for unknown order ${payment?.order_id}`);
+      return res.status(200).json({ success: true, ignored: 'unknown order' });
+    }
+    if (Number(payment.amount) !== onlineAmountPaise(order) || payment.currency !== 'INR') {
+      logger.error(`Razorpay webhook amount mismatch on order ${order._id}: got ${payment.amount} ${payment.currency}, expected ${onlineAmountPaise(order)} INR`);
+      return res.status(200).json({ success: true, ignored: 'amount mismatch' });
+    }
+
+    if (order.orderStatus === 'awaiting_payment') await settlePaid(order, payment.id);
+    return res.status(200).json({ success: true });
+  } catch (err: any) {
+    logger.error(`Razorpay webhook failed: ${err?.stack || err}`);
+    return res.status(500).json({ success: false });
   }
 };
+
+// Public order lookup for the Track Order page: needs the order ID and the
+// email on the account, and reveals status only.
+export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
+  const { orderId, email } = req.body;
+  const order = await Order.findOne({ _id: orderId, ...PLACED }).populate('user', 'email');
+  const ownerEmail = (order?.user as any)?.email as string | undefined;
+  if (!order || ownerEmail?.toLowerCase() !== String(email).trim().toLowerCase()) {
+    return errorResponse(res, 404, "We couldn't find an order with that ID and email.");
+  }
+  successResponse(res, 200, 'Order found', {
+    orderId: order._id,
+    orderStatus: order.orderStatus,
+    paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
+    placedAt: order.paidAt || order.createdAt,
+    updatedAt: order.updatedAt,
+    itemCount: order.items.reduce((n, i) => n + i.quantity, 0),
+  });
+});
 
 // Get My Orders
-export const getMyOrders = async (req: Request, res: Response) => {
-  try {
-    const orders = await Order.find({ user: req.user?._id })
-      .populate('items.product', 'name images')
-      .sort({ createdAt: -1 });
+export const getMyOrders = asyncHandler(async (req: Request, res: Response) => {
+  const orders = await Order.find({ user: req.user?._id, ...PLACED })
+    .populate('items.product', 'name images')
+    .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, data: orders });
-  } catch (error: any) {
-    console.error('Error fetching orders:', error);
-    res.status(500).json({ success: false, message: error.message || 'Error fetching orders' });
-  }
-};
+  successResponse(res, 200, 'Orders fetched', orders);
+});
 
 // Admin: Get a specific customer's order history
-export const getCustomerOrders = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const orders = await Order.find({ user: id })
-      .populate('items.product', 'name images')
-      .sort({ createdAt: -1 });
+export const getCustomerOrders = asyncHandler(async (req: Request, res: Response) => {
+  const orders = await Order.find({ user: req.params.id, ...PLACED })
+    .populate('items.product', 'name images')
+    .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, data: orders });
-  } catch (error: any) {
-    console.error('Error fetching customer orders:', error);
-    res.status(500).json({ success: false, message: error.message || 'Error fetching customer orders' });
-  }
+  successResponse(res, 200, 'Orders fetched', orders);
+});
+
+// Admin: Get All Orders. `?page=&limit=` is optional; without it every order is returned as before.
+export const getAllOrders = asyncHandler(async (req: Request, res: Response) => {
+  const limit = Math.min(Number(req.query.limit) || 0, 200);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  let query = Order.find(PLACED).populate(ADMIN_ORDER_POPULATE).sort({ createdAt: -1 });
+  if (limit) query = query.skip((page - 1) * limit).limit(limit);
+
+  successResponse(res, 200, 'Orders fetched', await query);
+});
+
+// Allowed moves for the studio. shipped → processing undoes an accidental "shipped".
+const TRANSITIONS: Record<string, string[]> = {
+  processing: ['shipped', 'cancelled'],
+  shipped: ['delivered', 'cancelled', 'processing'],
+  delivered: [],
+  cancelled: [],
 };
 
-// Admin: Get All Orders
-export const getAllOrders = async (req: Request, res: Response) => {
-  try {
-    const orders = await Order.find()
-      .populate('user', 'name email phone')
-      .populate('items.product', 'name images variants')
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({ success: true, data: orders });
-  } catch (error: any) {
-    console.error('Error fetching all orders:', error);
-    res.status(500).json({ success: false, message: error.message || 'Error fetching all orders' });
-  }
+const STATUS_EMAILS: Record<string, { label: string; color: string; subject: string; message: string }> = {
+  shipped: { label: 'Shipped', color: '#3b82f6', subject: 'Order Shipped', message: 'Great news! Your order has been shipped and is on its way to you.' },
+  delivered: { label: 'Delivered', color: '#10b981', subject: 'Order Delivered', message: 'Your order has been delivered successfully. We hope you enjoy your purchase!' },
+  cancelled: { label: 'Cancelled', color: '#ef4444', subject: 'Order Cancelled', message: 'Your order has been cancelled. If you have been charged, a refund will be initiated shortly.' },
 };
 
 // Admin: Update Order Status
-export const updateOrderStatus = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { orderStatus } = req.body;
-
-    const order = await Order.findByIdAndUpdate(
-      id,
-      { orderStatus },
-      { new: true }
-    ).populate('user', 'name email phone')
-      .populate('items.product', 'name images variants');
-
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
-    }
-
-    // Send Status Update Email
-    try {
-      const user = order.user as any;
-      if (user && user.email) {
-        const autoLoginToken = jwt.sign({ id: user._id, role: user.role || 'customer' }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-        let statusColor = '#3b82f6'; // default blue
-        let statusMessage = "There is an update regarding your recent order.";
-        let subject = `Order Status Update - Heedy`;
-
-        if (orderStatus === 'processing') {
-          statusColor = '#f59e0b'; // orange
-          statusMessage = "Your order has been placed successfully and is now being processed.";
-          subject = `Order Placed - Heedy`;
-        } else if (orderStatus === 'shipped') {
-          statusColor = '#3b82f6'; // blue
-          statusMessage = "Great news! Your order has been shipped and is on its way to you.";
-          subject = `Order Shipped - Heedy`;
-        } else if (orderStatus === 'delivered') {
-          statusColor = '#10b981'; // green
-          statusMessage = "Your order has been delivered successfully. We hope you enjoy your purchase!";
-          subject = `Order Delivered - Heedy`;
-        } else if (orderStatus === 'cancelled') {
-          statusColor = '#ef4444'; // red
-          statusMessage = "Your order has been cancelled. If you have been charged, a refund will be initiated shortly.";
-          subject = `Order Cancelled - Heedy`;
-        }
-
-        const itemsHtml = order.items.map((item: any) => {
-          const product = item.product;
-          return `
-            <tr>
-              <td style="padding: 15px 10px; border-bottom: 1px solid #eaeaea;">
-                <p style="margin: 0; font-weight: bold; color: #111827; font-size: 15px;">${product?.name || 'Product'}</p>
-                <p style="margin: 5px 0 0; color: #6b7280; font-size: 13px;">Qty: ${item.quantity}</p>
-              </td>
-              <td style="padding: 15px 0; border-bottom: 1px solid #eaeaea; text-align: right;">
-                <p style="margin: 0; font-weight: bold; color: #111827; font-size: 15px;">₹${item.price}</p>
-              </td>
-            </tr>
-          `;
-        }).join('');
-
-        const htmlMessage = `
-            <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 10px; overflow: hidden; background-color: #ffffff;">
-              <div style="background-color: #111827; padding: 30px; text-align: center;">
-                <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase;">Heedy</h1>
-              </div>
-              <div style="padding: 40px 30px;">
-                <h2 style="color: #111827; font-size: 20px; margin-top: 0; margin-bottom: 20px;">Order Status Update</h2>
-                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
-                  Dear <strong>${user.name}</strong>,<br><br>
-                  ${statusMessage}
-                </p>
-                <div style="background-color: #f9fafb; border: 1px solid #f3f4f6; border-radius: 8px; padding: 20px; margin-bottom: 30px; text-align: center;">
-                  <p style="margin: 0 0 10px 0; color: #374151; font-size: 15px;"><strong>Order ID:</strong> <span style="color: #111827;">${order._id}</span></p>
-                  <p style="margin: 0 0 10px 0; color: #374151; font-size: 15px;"><strong>Order Date:</strong> <span style="color: #111827;">${String(new Date(order.createdAt).getDate()).padStart(2, '0')}/${String(new Date(order.createdAt).getMonth() + 1).padStart(2, '0')}/${new Date(order.createdAt).getFullYear()}</span></p>
-                  <p style="margin: 0; color: #374151; font-size: 15px;">Current Status:</p>
-                  <div style="display: inline-block; background-color: ${statusColor}15; color: ${statusColor}; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 16px; text-transform: uppercase; margin-top: 10px; border: 1px solid ${statusColor}40;">
-                    ${orderStatus}
-                  </div>
-                </div>
-
-                <h3 style="color: #111827; font-size: 18px; margin-bottom: 15px; border-bottom: 2px solid #f3f4f6; padding-bottom: 10px;">Order Details</h3>
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                  <tbody>
-                    ${itemsHtml}
-                  </tbody>
-                </table>
-                
-                <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <tr>
-                      <td style="padding-bottom: 10px; color: #6b7280; font-size: 14px;">Subtotal:</td>
-                      <td style="padding-bottom: 10px; color: #111827; font-weight: bold; font-size: 14px; text-align: right;">₹${order.subtotal}</td>
-                    </tr>
-                    ${order.discount > 0 ? `
-                    <tr>
-                      <td style="padding-bottom: 10px; color: #6b7280; font-size: 14px;">Discount:</td>
-                      <td style="padding-bottom: 10px; color: #10b981; font-weight: bold; font-size: 14px; text-align: right;">-₹${order.discount}</td>
-                    </tr>
-                    ` : ''}
-                    <tr>
-                      <td style="padding-bottom: 15px; color: #6b7280; font-size: 14px;">Shipping:</td>
-                      <td style="padding-bottom: 15px; color: #111827; font-weight: bold; font-size: 14px; text-align: right;">${order.shippingFee > 0 ? `₹${order.shippingFee}` : 'Free'}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding-top: 15px; border-top: 1px solid #eaeaea; color: #111827; font-weight: bold; font-size: 16px;">Total:</td>
-                      <td style="padding-top: 15px; border-top: 1px solid #eaeaea; color: #111827; font-weight: bold; font-size: 18px; text-align: right;">₹${order.total}</td>
-                    </tr>
-                  </table>
-                </div>
-
-                <p style="color: #4b5563; font-size: 15px; line-height: 1.6; margin-bottom: 30px;">
-                  Thank you for shopping with Heedy. If you have any questions, feel free to reply to this email.
-                </p>
-                <div style="text-align: center;">
-                  <a href="${process.env.FRONTEND_URL || 'https://heedy-frontend.vercel.app'}/profile?token=${autoLoginToken}" style="background-color: #111827; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">View Order History</a>
-                </div>
-              </div>
-              <div style="background-color: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #eaeaea;">
-                <p style="color: #9ca3af; font-size: 13px; margin: 0;">© ${new Date().getFullYear()} Heedy Luxury. All rights reserved.</p>
-              </div>
-            </div>
-        `;
-        await sendEmail({
-          email: user.email,
-          subject: subject,
-          html: htmlMessage
-        });
-      } else {
-        console.warn(`Skipping email for order ${order._id} because user email is missing.`);
-      }
-    } catch (emailErr) {
-      console.error('Error sending status update email:', emailErr);
-    }
-
-    res.status(200).json({ success: true, data: order });
-  } catch (error: any) {
-    console.error('Error updating order status:', error);
-    res.status(500).json({ success: false, message: error.message || 'Error updating order status' });
+export const updateOrderStatus = asyncHandler(async (req: Request, res: Response) => {
+  const next: string = req.body.orderStatus;
+  const order = await Order.findOne({ _id: req.params.id, ...PLACED });
+  if (!order) {
+    return errorResponse(res, 404, 'Order not found');
   }
-};
+
+  const from = order.orderStatus;
+  if (from === next) {
+    await order.populate(ADMIN_ORDER_POPULATE);
+    return successResponse(res, 200, 'Status unchanged', order);
+  }
+  if (!TRANSITIONS[from]?.includes(next)) {
+    return errorResponse(res, 400, `An order that is ${from} can't be marked ${next}.`);
+  }
+
+  const set: Record<string, unknown> = { orderStatus: next };
+  const moneyReceived = order.paymentStatus === 'completed' || (order.paymentMethod === 'cod' && order.paymentStatus === 'pending' && order.advanceAmount > 0);
+  if (next === 'cancelled' && moneyReceived) set.paymentStatus = 'refund_due';
+  // Delivering a COD order means the balance was collected at the door.
+  if (next === 'delivered' && order.paymentMethod === 'cod' && order.paymentStatus === 'pending') set.paymentStatus = 'completed';
+
+  // Conditional on the status we validated against, so two admins can't race past the rules.
+  const updated = await Order.findOneAndUpdate({ _id: order._id, orderStatus: from }, { $set: set }, { new: true, runValidators: true })
+    .populate(ADMIN_ORDER_POPULATE);
+  if (!updated) {
+    return errorResponse(res, 409, 'This order was just changed by someone else. Refresh and try again.');
+  }
+
+  const email = STATUS_EMAILS[next];
+  const user = updated.user as any;
+  if (email && user?.email) {
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: `${email.subject} · ${BRAND_NAME}`,
+        html: renderOrderEmail({
+          order: updated,
+          customerName: user.name,
+          heading: 'Order Status Update',
+          message: email.message,
+          status: { label: email.label, color: email.color },
+          ctaLabel: 'View Order History',
+        }),
+      });
+    } catch (err: any) {
+      logger.error(`Status email failed for order ${updated._id}: ${err?.message || err}`);
+    }
+  }
+
+  successResponse(res, 200, 'Order status updated', updated);
+});
+
+// Admin: record that a refund due on a cancelled order has been paid out
+// (the refund itself is issued from the Razorpay dashboard).
+export const updatePaymentStatus = asyncHandler(async (req: Request, res: Response) => {
+  const updated = await Order.findOneAndUpdate(
+    { _id: req.params.id, paymentStatus: 'refund_due' },
+    { $set: { paymentStatus: 'refunded' } },
+    { new: true }
+  ).populate(ADMIN_ORDER_POPULATE);
+
+  if (!updated) {
+    const exists = await Order.exists({ _id: req.params.id, ...PLACED });
+    return exists
+      ? errorResponse(res, 400, 'Only orders with a refund due can be marked refunded.')
+      : errorResponse(res, 404, 'Order not found');
+  }
+  successResponse(res, 200, 'Marked as refunded', updated);
+});
