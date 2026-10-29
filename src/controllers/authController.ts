@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { User, IUser } from '../models/User';
 import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse, errorResponse } from '../utils/responseHandler';
-import { securityLogger } from '../utils/logger';
+import logger, { securityLogger } from '../utils/logger';
 import { ENV, isProduction } from '../config/env';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -78,10 +78,20 @@ interface GoogleIdentity {
  */
 async function identityFromAccessToken(accessToken: string): Promise<GoogleIdentity | null> {
   const infoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`);
-  if (!infoRes.ok) return null;
+  if (!infoRes.ok) {
+    logger.warn(`Google sign-in rejected: tokeninfo returned HTTP ${infoRes.status}`);
+    return null;
+  }
   const info: any = await infoRes.json();
-  // A token minted for some other app must not sign anyone in here.
-  if (info.aud !== ENV.GOOGLE_CLIENT_ID || !info.sub || !info.email || String(info.email_verified) !== 'true') {
+  // A token minted for some other app must not sign anyone in here. Client IDs
+  // are public (they ship in the storefront bundle), so naming them is safe and
+  // makes a storefront/backend client-ID mismatch obvious in the logs.
+  if (info.aud !== ENV.GOOGLE_CLIENT_ID) {
+    logger.warn(`Google sign-in rejected: token issued for client ${String(info.aud).slice(0, 12)}…, but GOOGLE_CLIENT_ID is ${ENV.GOOGLE_CLIENT_ID.slice(0, 12)}…`);
+    return null;
+  }
+  if (!info.sub || !info.email || String(info.email_verified) !== 'true') {
+    logger.warn('Google sign-in rejected: no verified email on the Google account');
     return null;
   }
 

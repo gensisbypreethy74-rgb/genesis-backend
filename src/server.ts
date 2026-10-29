@@ -1,6 +1,7 @@
 import app from './app';
 import { connectDB } from './config/db';
-import { ENV } from './config/env';
+import { ENV, configSummary } from './config/env';
+import { allowedOrigins } from './config/cors';
 
 const startServer = async () => {
   try {
@@ -10,6 +11,7 @@ const startServer = async () => {
     // Start Express Server
     app.listen(ENV.PORT, () => {
       console.log(`🚀 Server running in ${ENV.NODE_ENV} mode on port ${ENV.PORT}`);
+      console.log(`Config: ${configSummary()} | CORS allowed=${[...allowedOrigins()].join(' ')}`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
