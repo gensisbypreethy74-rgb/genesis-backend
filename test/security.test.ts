@@ -44,6 +44,15 @@ describe('security', () => {
       assert.equal(res.status, 401);
     });
 
+    it('rejects an expired token and survives Google being unreachable (401, not 500)', async () => {
+      // tokeninfo answers 400 invalid_token for expired access tokens.
+      stubFetch('https://oauth2.googleapis.com/tokeninfo', () => json({ error: 'invalid_token', error_description: 'Token expired' }, 400));
+      assert.equal((await api('POST', '/auth/google', { body: { accessToken: 'expired' } })).status, 401);
+      stubFetch('https://oauth2.googleapis.com/tokeninfo', () => { throw new TypeError('fetch failed'); });
+      assert.equal((await api('POST', '/auth/google', { body: { accessToken: 'whatever' } })).status, 401);
+      assert.equal((await api('POST', '/auth/google', { body: { mode: 'signin' } })).status, 400, 'missing token');
+    });
+
     it('rejects an unverified Google email', async () => {
       googleKnows('tok_unverified', { aud: CLIENT_ID, sub: 'g2', email: 'b@example.com', email_verified: 'false' });
       assert.equal((await api('POST', '/auth/google', { body: { accessToken: 'tok_unverified' } })).status, 401);
@@ -135,6 +144,87 @@ describe('security', () => {
 
     const cors = await fetch(`${baseUrl}/api/v1/health`, { headers: { Origin: 'https://evil.test' } });
     assert.equal(cors.status, 403);
+  });
+
+  describe('CORS', () => {
+    const LIVE = ['https://admin.genesisbypreethy.com', 'https://www.genesisbypreethy.com', 'https://genesisbypreethy.com'];
+    const preflight = (origin: string, method = 'PUT') =>
+      fetch(`${baseUrl}/api/v1/payments/admin/orders/abc/status`, {
+        method: 'OPTIONS',
+        headers: { Origin: origin, 'Access-Control-Request-Method': method, 'Access-Control-Request-Headers': 'authorization,content-type' },
+      });
+
+    it('the three live origins pass a credentialed preflight for every method and header the apps use', async () => {
+      for (const origin of LIVE) {
+        const res = await preflight(origin);
+        assert.equal(res.status, 200, origin);
+        assert.equal(res.headers.get('access-control-allow-origin'), origin);
+        assert.equal(res.headers.get('access-control-allow-credentials'), 'true');
+        assert.match(res.headers.get('access-control-allow-headers') || '', /Content-Type/);
+        assert.match(res.headers.get('access-control-allow-headers') || '', /Authorization/);
+        for (const m of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) assert.match(res.headers.get('access-control-allow-methods') || '', new RegExp(m));
+        assert.match(res.headers.get('vary') || '', /Origin/, 'caches keep origins apart');
+      }
+    });
+
+    it('refuses unknown and look-alike origins without any CORS headers (never a wildcard)', async () => {
+      for (const origin of ['https://evil.example', 'https://genesisbypreethy.com.evil.example', 'http://genesisbypreethy.com', 'https://shop.genesisbypreethy.com', 'null']) {
+        const res = await preflight(origin);
+        assert.equal(res.status, 403, origin);
+        assert.equal(res.headers.get('access-control-allow-origin'), null, origin);
+      }
+    });
+
+    it('authenticated requests from the live origins succeed and carry CORS headers', async () => {
+      const admin = await makeUser({ role: 'admin' });
+      const customer = await makeUser();
+      const orders = await fetch(`${baseUrl}/api/v1/payments/admin/orders`, { headers: { Origin: LIVE[0], Authorization: `Bearer ${admin.token}` } });
+      assert.equal(orders.status, 200);
+      assert.equal(orders.headers.get('access-control-allow-origin'), LIVE[0]);
+      const profile = await fetch(`${baseUrl}/api/v1/users/profile`, { headers: { Origin: LIVE[1], Authorization: `Bearer ${customer.token}` } });
+      assert.equal(profile.status, 200);
+      assert.equal(profile.headers.get('access-control-allow-origin'), LIVE[1]);
+    });
+
+    it('a missing token is a readable 401, not a CORS failure', async () => {
+      const res = await fetch(`${baseUrl}/api/v1/payments/admin/orders`, { headers: { Origin: LIVE[0] } });
+      assert.equal(res.status, 401);
+      assert.equal(res.headers.get('access-control-allow-origin'), LIVE[0], 'the browser can read the 401');
+    });
+
+    it('localhost is allowed only in development; CORS_ORIGIN extras are normalised', () => {
+      const { allowedOrigins, PRODUCTION_ORIGINS, DEV_ORIGINS } = require('../src/config/cors');
+      const deployed = allowedOrigins('http://localhost:3000, https://genesis-preview.vercel.app/ ,', true);
+      assert.ok(!deployed.has('http://localhost:3000'), 'no localhost on a deployed server, even if CORS_ORIGIN lists it');
+      assert.ok(deployed.has('https://genesis-preview.vercel.app'), 'trailing slash and spaces removed');
+      for (const o of PRODUCTION_ORIGINS) assert.ok(deployed.has(o));
+      const dev = allowedOrigins('', false);
+      for (const o of [...PRODUCTION_ORIGINS, ...DEV_ORIGINS]) assert.ok(dev.has(o));
+    });
+  });
+
+  it('production config: simulated payments are never allowed on Render, whatever NODE_ENV says', () => {
+    const env = require('../src/config/env');
+    const saved = { id: env.ENV.RAZORPAY_KEY_ID, secret: env.ENV.RAZORPAY_KEY_SECRET, render: process.env.RENDER };
+    try {
+      env.ENV.RAZORPAY_KEY_ID = '';
+      env.ENV.RAZORPAY_KEY_SECRET = '';
+      assert.equal(env.mockPaymentsAllowed(), true, 'local dev without keys may simulate');
+      process.env.RENDER = 'true';
+      assert.equal(env.mockPaymentsAllowed(), false, 'never on a deployed server');
+    } finally {
+      env.ENV.RAZORPAY_KEY_ID = saved.id;
+      env.ENV.RAZORPAY_KEY_SECRET = saved.secret;
+      if (saved.render === undefined) delete process.env.RENDER; else process.env.RENDER = saved.render;
+    }
+  });
+
+  it('production config: the startup summary names settings but never secrets', () => {
+    const summary: string = require('../src/config/env').configSummary();
+    assert.match(summary, /NODE_ENV=test/);
+    assert.match(summary, /Razorpay=test/);
+    assert.match(summary, /webhook secret=set/);
+    for (const secret of ['test_key_secret', 'test_webhook_secret', 'test-jwt-secret']) assert.ok(!summary.includes(secret), `${secret} not logged`);
   });
 
   it('B16: JSON bodies over 1 MB are refused', async () => {

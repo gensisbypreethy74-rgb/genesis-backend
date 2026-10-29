@@ -14,10 +14,13 @@ export const ENV = {
   JWT_SECRET: process.env.JWT_SECRET || '',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
   ADMIN_JWT_EXPIRES_IN: process.env.ADMIN_JWT_EXPIRES_IN || '12h',
-  CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  // Extra origins only: the live sites and localhost are built into config/cors.ts.
+  CORS_ORIGIN: process.env.CORS_ORIGIN || '',
   FRONTEND_URL: (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, ''),
 
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  // Trimmed and unquoted: a pasted `"…apps.googleusercontent.com" ` would
+  // otherwise never match the token's audience.
+  GOOGLE_CLIENT_ID: (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, ''),
 
   RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || '',
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || '',
@@ -38,11 +41,15 @@ export const isProduction = () => ENV.NODE_ENV === 'production';
 /** Razorpay is usable only with a real key pair. */
 export const razorpayConfigured = () => Boolean(ENV.RAZORPAY_KEY_ID && ENV.RAZORPAY_KEY_SECRET);
 
+/** Render sets RENDER=true on every service it runs; anything there is a deployment. */
+export const isDeployed = () => Boolean(process.env.RENDER);
+
 /**
  * Simulated payments exist only so a developer without Razorpay keys can walk
- * through checkout locally. Never in production, never when real keys exist.
+ * through checkout locally. Never in production, never on a deployed server
+ * (even one misconfigured with NODE_ENV=development), never when real keys exist.
  */
-export const mockPaymentsAllowed = () => !isProduction() && !razorpayConfigured();
+export const mockPaymentsAllowed = () => !isProduction() && !isDeployed() && !razorpayConfigured();
 
 // Fail at boot instead of running with forgeable tokens or a half-configured
 // payment flow.
@@ -60,3 +67,22 @@ if (isProduction()) {
 if (missing.length) {
   throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 }
+
+if (isDeployed() && !isProduction()) {
+  console.warn(
+    `WARNING: running on Render with NODE_ENV=${ENV.NODE_ENV}. Stack traces are sent to visitors, ` +
+    'the API rate limit is off and production config checks are skipped. Set NODE_ENV=production.'
+  );
+}
+
+/** Non-secret view of the running configuration, for checking a deploy from its logs. */
+export const configSummary = () => {
+  return [
+    `NODE_ENV=${ENV.NODE_ENV}`,
+    `FRONTEND_URL=${ENV.FRONTEND_URL}`,
+    `Google client=${ENV.GOOGLE_CLIENT_ID ? ENV.GOOGLE_CLIENT_ID.slice(0, 12) + '…' : '(missing)'}`,
+    `Razorpay=${ENV.RAZORPAY_KEY_ID.startsWith('rzp_live_') ? 'live' : ENV.RAZORPAY_KEY_ID.startsWith('rzp_test_') ? 'test' : '(missing)'}`,
+    `webhook secret=${ENV.RAZORPAY_WEBHOOK_SECRET ? 'set' : 'MISSING'}`,
+    `email=${process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL ? 'on' : 'off'}`,
+  ].join(' | ');
+};

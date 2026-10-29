@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 
 import { ENV } from './config/env';
+import { allowedOrigins } from './config/cors';
 import apiRoutes from './routes';
 import { razorpayWebhook } from './controllers/paymentController';
 import { errorHandler } from './middlewares/errorHandler';
@@ -36,22 +37,27 @@ app.use(helmet({
   },
 }));
 
-// CORS configuration
-const allowedOrigins = ENV.CORS_ORIGIN.split(",").map(o => o.trim());
+// CORS configuration (see config/cors.ts for which origins are allowed and why)
+const origins = allowedOrigins();
 
 const corsConfig = {
   origin: function (origin: string | undefined, callback: any) {
     // Allow requests with no origin (mobile apps, Postman, Razorpay webhooks, etc.)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    if (origins.has(origin.toLowerCase())) {
       callback(null, true);
     } else {
       logger.warn(`CORS blocked request from origin: ${origin}`);
       callback(Object.assign(new Error("Not allowed by CORS"), { statusCode: 403 }));
     }
   },
+  // Exact origins only (never "*"): the admin login sends credentials.
   credentials: true,
+  // Everything the two frontends send; nothing else is needed.
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 600, // let browsers reuse a preflight for 10 minutes
   optionsSuccessStatus: 200,
 };
 

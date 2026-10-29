@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import { isProduction } from '../config/env';
 
 // General API rate limiter.
 // A single storefront page load fans out to ~8 public content endpoints
@@ -14,7 +15,8 @@ export const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => process.env.NODE_ENV !== 'production',
+  // Same notion of "production" as the rest of the app (an unset NODE_ENV counts).
+  skip: () => !isProduction(),
 });
 
 // Strict rate limiter for authentication endpoints (admin password, Google)

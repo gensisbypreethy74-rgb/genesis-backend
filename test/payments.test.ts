@@ -379,6 +379,29 @@ describe('payments', () => {
     assert.equal((await api('POST', '/payments/track', { body: { orderId: unpaid.data.data.orderId, email: ctx.user.email } })).status, 404);
   });
 
+  it('admin orders API: admins only, empty when none, paginates, and shows paid orders only', async () => {
+    const customer = await makeUser();
+    const admin = await makeUser({ role: 'admin' });
+    assert.equal((await api('GET', '/payments/admin/orders')).status, 401, 'no token');
+    assert.equal((await api('GET', '/payments/admin/orders', { token: customer.token })).status, 403, 'customer');
+    const empty = await api('GET', '/payments/admin/orders', { token: admin.token });
+    assert.deepEqual([empty.status, empty.data.data], [200, []]);
+
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) ids.push((await paidOrder(customer)).orderId);
+    const p = await makeProduct();
+    await checkout(customer, [{ product: p.id, size: 'M', quantity: 1 }]); // started, never paid
+
+    const all = await api('GET', '/payments/admin/orders', { token: admin.token });
+    assert.equal(all.data.data.length, 3, 'the unpaid checkout is not listed');
+    const page1 = await api('GET', '/payments/admin/orders?limit=2&page=1', { token: admin.token });
+    const page2 = await api('GET', '/payments/admin/orders?limit=2&page=2', { token: admin.token });
+    assert.equal(page1.data.data.length, 2);
+    assert.equal(page2.data.data.length, 1);
+    assert.deepEqual(new Set([...page1.data.data, ...page2.data.data].map((o: any) => o._id)), new Set(ids), 'every paid order, newest first, no duplicates');
+    assert.equal(page1.data.data[0].user.email, customer.user.email, 'customer populated for the admin');
+  });
+
   it('B23: orders are indexed for per-customer history', async () => {
     const indexes = await Order.collection.indexes();
     assert.ok(indexes.some((i: any) => i.key.user === 1 && i.key.createdAt === -1));
