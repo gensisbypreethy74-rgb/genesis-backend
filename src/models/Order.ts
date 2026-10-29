@@ -1,15 +1,25 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export const ORDER_STATUSES = ['awaiting_payment', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
+export const PAYMENT_STATUSES = ['pending', 'completed', 'failed', 'refund_due', 'refunded'] as const;
+
+export interface IOrderItem {
+  product: mongoose.Types.ObjectId;
+  // Snapshots taken at purchase, so history survives product edits/deletes.
+  name?: string;
+  image?: string;
+  quantity: number;
+  price: number;
+  size?: string;
+}
+
 export interface IOrder extends Document {
   user: mongoose.Types.ObjectId;
-  items: {
-    product: mongoose.Types.ObjectId;
-    quantity: number;
-    price: number;
-    size?: string;
-  }[];
+  items: IOrderItem[];
   shippingAddress: {
-    street: string;
+    street?: string;
+    apartment?: string;
+    landmark?: string;
     city: string;
     state: string;
     zipCode: string;
@@ -22,11 +32,19 @@ export interface IOrder extends Document {
   paymentMethod: string;
   advanceAmount: number;
   balanceAmount: number;
-  paymentStatus: 'pending' | 'completed' | 'failed' | 'refunded';
-  orderStatus: 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  paymentStatus: (typeof PAYMENT_STATUSES)[number];
+  /**
+   * `awaiting_payment`: created at checkout with server-computed prices, not
+   * yet paid. Only the verify call or the Razorpay webhook moves it on, and no
+   * customer/admin list shows it.
+   */
+  orderStatus: (typeof ORDER_STATUSES)[number];
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   razorpaySignature?: string;
+  paidAt?: Date;
+  /** Paid, but a size ran out between checkout and payment. The studio must follow up. */
+  stockShortfall?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,13 +55,17 @@ const OrderSchema: Schema = new Schema(
     items: [
       {
         product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+        name: { type: String },
+        image: { type: String },
         quantity: { type: Number, required: true },
         price: { type: Number, required: true },
         size: { type: String },
       },
     ],
     shippingAddress: {
-      street: { type: String, required: true },
+      street: { type: String },
+      apartment: { type: String },
+      landmark: { type: String },
       city: { type: String, required: true },
       state: { type: String, required: true },
       zipCode: { type: String, required: true },
@@ -59,19 +81,23 @@ const OrderSchema: Schema = new Schema(
     balanceAmount: { type: Number, default: 0 },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'completed', 'failed', 'refunded'],
+      enum: PAYMENT_STATUSES,
       default: 'pending',
     },
     orderStatus: {
       type: String,
-      enum: ['processing', 'shipped', 'delivered', 'cancelled'],
+      enum: ORDER_STATUSES,
       default: 'processing',
     },
-    razorpayOrderId: { type: String },
+    razorpayOrderId: { type: String, index: true },
     razorpayPaymentId: { type: String },
     razorpaySignature: { type: String },
+    paidAt: { type: Date },
+    stockShortfall: { type: Boolean },
   },
   { timestamps: true }
 );
+
+OrderSchema.index({ user: 1, createdAt: -1 });
 
 export default mongoose.model<IOrder>('Order', OrderSchema);

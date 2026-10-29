@@ -6,9 +6,10 @@ import cookieParser from 'cookie-parser';
 
 import { ENV } from './config/env';
 import apiRoutes from './routes';
+import { razorpayWebhook } from './controllers/paymentController';
 import { errorHandler } from './middlewares/errorHandler';
 import { notFoundHandler } from './middlewares/notFoundHandler';
-import { sanitizeInput, sanitizeStrings } from './middlewares/sanitize';
+import { sanitizeInput } from './middlewares/sanitize';
 import { apiLimiter } from './middlewares/rateLimiter';
 import logger from './utils/logger';
 
@@ -36,20 +37,18 @@ app.use(helmet({
 }));
 
 // CORS configuration
-const allowedOrigins = process.env.CORS_ORIGIN
-  ?.split(",")
-  .map(o => o.trim()) || [];
+const allowedOrigins = ENV.CORS_ORIGIN.split(",").map(o => o.trim());
 
 const corsConfig = {
   origin: function (origin: string | undefined, callback: any) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
+    // Allow requests with no origin (mobile apps, Postman, Razorpay webhooks, etc.)
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       logger.warn(`CORS blocked request from origin: ${origin}`);
-      callback(new Error("Not allowed by CORS"));
+      callback(Object.assign(new Error("Not allowed by CORS"), { statusCode: 403 }));
     }
   },
   credentials: true,
@@ -59,14 +58,17 @@ const corsConfig = {
 app.use(cors(corsConfig));
 app.options("*", cors(corsConfig));
 
-// Body parsers with size limits
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Razorpay signs webhooks over the exact raw bytes, so this route must receive
+// the body before any JSON parser or sanitizer rewrites it.
+app.post('/api/v1/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }), razorpayWebhook);
+
+// Body parsers with size limits. Images go through multer, so JSON stays small.
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// Sanitization middleware - prevent NoSQL injection and XSS
+// Sanitization middleware - prevent NoSQL injection
 app.use(sanitizeInput);
-app.use(sanitizeStrings);
 
 // Rate limiting - apply to all API routes
 app.use('/api/', apiLimiter);
@@ -74,8 +76,7 @@ app.use('/api/', apiLimiter);
 // Logger
 if (ENV.NODE_ENV === 'development') {
   app.use(morgan('dev'));
-} else {
-  // Production logging
+} else if (ENV.NODE_ENV === 'production') {
   app.use(morgan('combined', {
     stream: {
       write: (message: string) => logger.info(message.trim()),
@@ -96,8 +97,6 @@ app.get('/', (_req, res) => {
 
 // API Routes
 app.use('/api/v1', apiRoutes);
-import path from 'path';
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // 404 Handler
 app.use(notFoundHandler);

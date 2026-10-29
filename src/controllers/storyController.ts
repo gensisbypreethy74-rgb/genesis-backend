@@ -3,6 +3,7 @@ import { StorySection } from '../models/StorySection';
 import { StorySettings, getOrCreateStorySettings } from '../models/StorySettings';
 import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse, errorResponse } from '../utils/responseHandler';
+import { isSafeHref, UNSAFE_HREF_MESSAGE } from '../utils/safeHref';
 
 const SECTION_TYPES = ['hero', 'founders-note', 'text', 'image', 'gallery', 'quote', 'timeline', 'cta'];
 
@@ -77,6 +78,7 @@ export const getAdminStory = asyncHandler(async (_req: Request, res: Response) =
 
 // ── Section CRUD ──────────────────────────────────────────────────────────────
 export const createStorySection = asyncHandler(async (req: Request, res: Response) => {
+  if (!isSafeHref(req.body.ctaHref)) return errorResponse(res, 400, UNSAFE_HREF_MESSAGE);
   const data = normalizeBody(req);
   if (!SECTION_TYPES.includes(data.type)) {
     return errorResponse(res, 400, 'A valid section type is required');
@@ -91,6 +93,7 @@ export const createStorySection = asyncHandler(async (req: Request, res: Respons
 });
 
 export const updateStorySection = asyncHandler(async (req: Request, res: Response) => {
+  if (!isSafeHref(req.body.ctaHref)) return errorResponse(res, 400, UNSAFE_HREF_MESSAGE);
   const existing = await StorySection.findById(req.params.id);
   if (!existing) return errorResponse(res, 404, 'Section not found');
 

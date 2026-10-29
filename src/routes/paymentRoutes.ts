@@ -1,20 +1,31 @@
 import express from 'express';
-import { createOrder, verifyPayment, getMyOrders, getCustomerOrders, getAllOrders, updateOrderStatus } from '../controllers/paymentController';
+import {
+  createOrder,
+  verifyPayment,
+  trackOrder,
+  getMyOrders,
+  getCustomerOrders,
+  getAllOrders,
+  updateOrderStatus,
+  updatePaymentStatus,
+} from '../controllers/paymentController';
 import { protect, authorize } from '../middlewares/authMiddleware';
 import { validate, schemas } from '../middlewares/validation';
+import { paymentLimiter, trackOrderLimiter } from '../middlewares/rateLimiter';
 
 const router = express.Router();
 
-router.post('/create-order', protect, validate(schemas.createOrder), createOrder);
-// NOTE: /verify is intentionally left to its HMAC signature check + Mongoose
-// validators. Its payload (mock-payment ids, mapped shipping address) is too
-// variable for the static zod schema without risking rejection of valid orders.
-router.post('/verify', protect, verifyPayment);
+// POST /webhook is mounted in app.ts: it needs the raw body for its signature.
+router.post('/create-order', paymentLimiter, protect, validate(schemas.createOrder), createOrder);
+router.post('/verify', paymentLimiter, protect, validate(schemas.verifyPayment), verifyPayment);
+router.post('/track', trackOrderLimiter, validate(schemas.trackOrder), trackOrder);
 router.get('/myorders', protect, getMyOrders);
 
 // Admin routes
-router.get('/admin/orders', protect, authorize('admin', 'superadmin'), getAllOrders);
-router.get('/admin/customers/:id/orders', protect, authorize('admin', 'superadmin'), getCustomerOrders);
-router.put('/admin/orders/:id/status', protect, authorize('admin', 'superadmin'), updateOrderStatus);
+const adminOnly = [protect, authorize('admin', 'superadmin')];
+router.get('/admin/orders', ...adminOnly, getAllOrders);
+router.get('/admin/customers/:id/orders', ...adminOnly, validate(schemas.mongoId), getCustomerOrders);
+router.put('/admin/orders/:id/status', ...adminOnly, validate(schemas.orderStatus), updateOrderStatus);
+router.put('/admin/orders/:id/payment-status', ...adminOnly, validate(schemas.paymentStatus), updatePaymentStatus);
 
 export default router;

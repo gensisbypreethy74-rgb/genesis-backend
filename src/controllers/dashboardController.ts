@@ -7,6 +7,8 @@ import { Banner } from '../models/Banner';
 import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse } from '../utils/responseHandler';
 
+const PLACED = { orderStatus: { $ne: 'awaiting_payment' } };
+
 export const getDashboardStats = asyncHandler(async (req: Request, res: Response) => {
   const [
     totalOrders,
@@ -17,15 +19,28 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     totalBanners,
     revenueResult,
   ] = await Promise.all([
-    Order.countDocuments(),
-    Order.find().populate('user', 'name email').sort({ createdAt: -1 }).limit(5),
+    Order.countDocuments(PLACED),
+    Order.find(PLACED).populate('user', 'name email').sort({ createdAt: -1 }).limit(5),
     Product.countDocuments(),
     User.countDocuments({ role: 'customer' }),
     Category.countDocuments(),
     Banner.countDocuments(),
+    // Money actually received: full total for paid orders, the advance for open
+    // COD orders. Cancelled orders and legacy simulated payments never count.
     Order.aggregate([
-      { $match: { paymentStatus: 'completed' } },
-      { $group: { _id: null, total: { $sum: '$total' } } }
+      {
+        $match: {
+          orderStatus: { $nin: ['cancelled', 'awaiting_payment'] },
+          paymentStatus: { $in: ['completed', 'pending'] },
+          razorpayPaymentId: { $ne: 'mock_payment' },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'completed'] }, '$total', '$advanceAmount'] } },
+        },
+      },
     ]),
   ]);
 

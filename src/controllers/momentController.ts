@@ -1,13 +1,17 @@
 import { Request, Response } from 'express';
 import { getOrCreateMomentSettings } from '../models/MomentSettings';
 import { asyncHandler } from '../utils/asyncHandler';
-import { successResponse } from '../utils/responseHandler';
+import { successResponse, errorResponse } from '../utils/responseHandler';
+import { isSafeHref, UNSAFE_HREF_MESSAGE } from '../utils/safeHref';
 
 export const getMoment = asyncHandler(async (_req: Request, res: Response) => {
   successResponse(res, 200, 'Moment fetched', await getOrCreateMomentSettings());
 });
 
 export const updateMoment = asyncHandler(async (req: Request, res: Response) => {
+  if (!isSafeHref(req.body.shopHref) || !isSafeHref(req.body.seasonal?.ctaHref)) {
+    return errorResponse(res, 400, UNSAFE_HREF_MESSAGE);
+  }
   const m = await getOrCreateMomentSettings();
   const { eyebrow, title, body, shopLabel, shopHref, explainerEyebrow, steps } = req.body;
   if (eyebrow !== undefined) m.eyebrow = eyebrow;

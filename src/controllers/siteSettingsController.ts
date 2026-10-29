@@ -10,7 +10,7 @@ export const getSiteSettings = asyncHandler(async (_req: Request, res: Response)
 export const updateSiteSettings = asyncHandler(async (req: Request, res: Response) => {
   const settings = await getOrCreateSiteSettings();
   const { whatsappNumber } = req.body;
-  if (whatsappNumber !== undefined) {
+  if (typeof whatsappNumber === 'string') {
     // Strip anything that isn't a digit — the admin might paste "+91 77368 30303".
     settings.whatsappNumber = whatsappNumber.replace(/\D/g, '');
   }

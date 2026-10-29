@@ -9,8 +9,8 @@ export interface IUser extends Document {
   role: 'admin' | 'superadmin' | 'customer';
   isActive: boolean;
   isVerified: boolean;
-  otp?: string;
-  otpExpires?: Date;
+  /** Bumped on server-side sign-out; tokens carrying an older value are rejected. */
+  tokenVersion?: number;
   googleId?: string;
   avatar?: string;
   addresses?: {
@@ -34,8 +34,7 @@ const userSchema = new Schema<IUser>({
   role: { type: String, enum: ['admin', 'superadmin', 'customer'], default: 'customer' },
   isActive: { type: Boolean, default: true },
   isVerified: { type: Boolean, default: false },
-  otp: { type: String },
-  otpExpires: { type: Date },
+  tokenVersion: { type: Number, default: 0 },
   googleId: { type: String },
   avatar: { type: String },
   addresses: [{

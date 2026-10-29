@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Category } from '../models/Category';
+import { Product } from '../models/Product';
 import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse, errorResponse } from '../utils/responseHandler';
 
@@ -39,14 +40,24 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
   if (req.file) {
     req.body.image = req.file.path;
   }
+  const oldName = category.name;
   category = await Category.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  // Products reference their category by name, so a rename has to follow them.
+  if (category && category.name !== oldName) {
+    await Product.updateMany({ category: oldName }, { $set: { category: category.name } });
+  }
   successResponse(res, 200, 'Category updated successfully', category);
 });
 
 export const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
-  const category = await Category.findByIdAndDelete(req.params.id);
+  const category = await Category.findById(req.params.id);
   if (!category) {
     return errorResponse(res, 404, 'Category not found');
   }
+  const inUse = await Product.countDocuments({ category: category.name });
+  if (inUse > 0) {
+    return errorResponse(res, 409, `${inUse} ${inUse === 1 ? 'piece still uses' : 'pieces still use'} this category. Move them first.`);
+  }
+  await category.deleteOne();
   successResponse(res, 200, 'Category deleted successfully', null);
 });

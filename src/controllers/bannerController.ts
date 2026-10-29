@@ -2,8 +2,10 @@ import { Request, Response } from 'express';
 import { Banner } from '../models/Banner';
 import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse, errorResponse } from '../utils/responseHandler';
+import { isSafeHref, UNSAFE_HREF_MESSAGE } from '../utils/safeHref';
 
 export const createBanner = asyncHandler(async (req: Request, res: Response) => {
+  if (!isSafeHref(req.body.ctaHref)) return errorResponse(res, 400, UNSAFE_HREF_MESSAGE);
   if (req.files) {
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     if (files['image']) req.body.image = files['image'][0].path;
@@ -19,6 +21,7 @@ export const getBanners = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const updateBanner = asyncHandler(async (req: Request, res: Response) => {
+  if (!isSafeHref(req.body.ctaHref)) return errorResponse(res, 400, UNSAFE_HREF_MESSAGE);
   let banner = await Banner.findById(req.params.id);
   if (!banner) {
     return errorResponse(res, 404, 'Banner not found');

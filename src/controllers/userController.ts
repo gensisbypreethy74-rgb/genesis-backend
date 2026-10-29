@@ -134,12 +134,14 @@ export const getAllCustomers = asyncHandler(async (req: Request, res: Response) 
 // Admin: Toggle customer active status (block/unblock)
 export const toggleCustomerStatus = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
-  const user = await User.findById(id);
+
+  // Customers only: this endpoint must not be able to lock out studio accounts.
+  const user = await User.findOne({ _id: id, role: 'customer' });
   if (!user) return errorResponse(res, 404, 'Customer not found');
 
   user.isActive = !user.isActive;
   await user.save();
 
-  successResponse(res, 200, `Customer ${user.isActive ? 'unblocked' : 'blocked'} successfully`, user);
+  const { _id, name, email, phone, isActive, createdAt } = user as any;
+  successResponse(res, 200, `Customer ${user.isActive ? 'unblocked' : 'blocked'} successfully`, { _id, name, email, phone, isActive, createdAt });
 });
