@@ -1,6 +1,7 @@
 import Order, { IOrder } from '../models/Order';
 import { Product } from '../models/Product';
 import { Cart } from '../models/Cart';
+import { queuedConfirmation } from './orderConfirmation';
 
 // Checkout rules, previously only in the storefront. The browser now just
 // displays them; the server is what charges.
@@ -110,7 +111,8 @@ async function takeStock(items: IOrder['items']) {
  * Moves an order from awaiting_payment to paid exactly once. The browser
  * verify call and the Razorpay webhook may both call this, in any order and
  * any number of times; only the first one transitions the order and runs the
- * side effects (stock, cart). `fresh` tells the caller whether it was that one.
+ * side effects (stock, cart, queuing the confirmation email). `fresh` tells
+ * the caller whether it was that one.
  */
 export async function markOrderPaid(orderId: unknown, payment: { paymentId: string; signature?: string }) {
   const current = await Order.findById(orderId);
@@ -122,6 +124,9 @@ export async function markOrderPaid(orderId: unknown, payment: { paymentId: stri
     paymentStatus: current.paymentMethod === 'cod' ? 'pending' : 'completed',
     razorpayPaymentId: payment.paymentId,
     paidAt: new Date(),
+    // Queued in this same write, so a crash right after payment can't lose the
+    // email, and only the call that wins the transition below queues one.
+    confirmationEmail: queuedConfirmation(),
   };
   if (payment.signature) set.razorpaySignature = payment.signature;
 

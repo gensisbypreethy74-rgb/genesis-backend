@@ -1,11 +1,15 @@
 import { Router } from 'express';
-import { getCart, addToCart, updateCartItem, removeFromCart, clearCart, mergeCart } from '../controllers/cartController';
+import { getCart, addToCart, updateCartItem, removeFromCart, clearCart, mergeCart, quoteCart } from '../controllers/cartController';
 import { protect } from '../middlewares/authMiddleware';
 import { validate, schemas } from '../middlewares/validation';
 
 const router = Router();
 
-// All cart routes require authentication
+// Public: current prices for a guest's bag (kept in their browser). Reads the
+// catalogue only; it never sees or touches anyone's saved cart.
+router.post('/quote', validate(schemas.cartQuote), quoteCart);
+
+// Every other cart route is the signed-in customer's own cart
 router.use(protect);
 
 router.route('/')

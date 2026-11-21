@@ -5,7 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse, errorResponse } from '../utils/responseHandler';
 import { subscribeToZohoList, unsubscribeFromZohoList } from '../utils/zohoCampaigns';
 import { sendEmail } from '../utils/sendEmail';
-import { escapeHtml } from '../utils/orderEmail';
+import { escapeHtml, siteUrl } from '../utils/orderEmail';
 import logger, { maskEmail } from '../utils/logger';
 import { ENV } from '../config/env';
 
@@ -30,7 +30,7 @@ const unsubscribeUrl = (req: Request, email: string) =>
  * subscription. This is independent of Zoho's double opt-in email (whose
  * deliverability depends on a verified sender domain in the Zoho dashboard) —
  * so the subscriber gets a confirmation the moment an email provider
- * (SENDGRID_API_KEY + SENDGRID_FROM_EMAIL) is configured, regardless of Zoho.
+ * (RESEND_API_KEY + EMAIL_FROM) is configured, regardless of Zoho.
  */
 const buildConfirmationEmail = (email: string, unsubscribe: string) => ({
   email,
@@ -54,7 +54,7 @@ const buildConfirmationEmail = (email: string, unsubscribe: string) => ({
           </p>
         </td></tr>
         <tr><td style="padding:28px 44px 44px;text-align:center;">
-          <a href="${ENV.FRONTEND_URL}"
+          <a href="${siteUrl()}"
              style="display:inline-block;background:#1c1a15;color:#f5f0e8;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:2px;font-size:11px;text-decoration:none;padding:14px 28px;">
             Explore the Collection
           </a>
@@ -72,7 +72,7 @@ const buildConfirmationEmail = (email: string, unsubscribe: string) => ({
 </body></html>`,
 });
 
-/** Send the branded confirmation email — never throws. A no-op until SendGrid is configured. */
+/** Send the branded confirmation email — never throws. A no-op until Resend is configured. */
 const sendConfirmation = async (req: Request, email: string) => {
   try {
     await sendEmail(buildConfirmationEmail(email, unsubscribeUrl(req, email)));

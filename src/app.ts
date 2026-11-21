@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import { ENV } from './config/env';
 import { allowedOrigins } from './config/cors';
 import apiRoutes from './routes';
-import { razorpayWebhook } from './controllers/paymentController';
+import { razorpayWebhook, resendWebhook } from './controllers/paymentController';
 import { errorHandler } from './middlewares/errorHandler';
 import { notFoundHandler } from './middlewares/notFoundHandler';
 import { sanitizeInput } from './middlewares/sanitize';
@@ -67,6 +67,8 @@ app.options("*", cors(corsConfig));
 // Razorpay signs webhooks over the exact raw bytes, so this route must receive
 // the body before any JSON parser or sanitizer rewrites it.
 app.post('/api/v1/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }), razorpayWebhook);
+// Resend's delivery webhooks are signed the same way (over the raw bytes).
+app.post('/api/v1/emails/webhook', express.raw({ type: 'application/json', limit: '1mb' }), resendWebhook);
 
 // Body parsers with size limits. Images go through multer, so JSON stays small.
 app.use(express.json({ limit: '1mb' }));
