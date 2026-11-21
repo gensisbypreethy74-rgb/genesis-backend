@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
 import Order, { IOrder } from '../models/Order';
-import { User } from '../models/User';
 import { asyncHandler } from '../utils/asyncHandler';
 import { successResponse, errorResponse } from '../utils/responseHandler';
-import { sendEmail } from '../utils/sendEmail';
+import { sendEmail, isEmailConfigured, resendClient } from '../utils/sendEmail';
 import logger from '../utils/logger';
 import { ENV, mockPaymentsAllowed } from '../config/env';
 import { razorpay, verifyPaymentSignature, verifyWebhookSignature } from '../utils/razorpay';
 import { priceCheckout, markOrderPaid, onlineAmountPaise, CheckoutError } from '../utils/orders';
 import { renderOrderEmail, BRAND_NAME } from '../utils/orderEmail';
+import { sendOrderConfirmation } from '../utils/orderConfirmation';
 
 const MOCK_ORDER_PREFIX = 'mock_order_';
 
@@ -20,31 +20,13 @@ const ADMIN_ORDER_POPULATE = [
   { path: 'items.product', select: 'name images variants' },
 ];
 
-// Sends the order confirmation email. Never throws: email must not break checkout.
-const sendConfirmation = async (order: IOrder) => {
-  try {
-    const user = await User.findById(order.user).select('name email');
-    if (!user?.email) return;
-    await sendEmail({
-      email: user.email,
-      subject: `Order Confirmed · ${BRAND_NAME}`,
-      html: renderOrderEmail({
-        order,
-        customerName: user.name,
-        heading: 'Order Confirmation',
-        message: 'Thank you for your purchase! Your order has been placed successfully and is now being processed.',
-        ctaLabel: 'View Order Details',
-      }),
-    });
-  } catch (err: any) {
-    logger.error(`Order confirmation email failed for ${order._id}: ${err?.message || err}`);
-  }
-};
-
 // Shared by the browser verify call and the webhook: settle once, email once.
+// markOrderPaid queues the confirmation in the same write; it is sent here in
+// the background, so the shopper's response never waits on the email provider,
+// and anything that fails is retried by the confirmation worker.
 const settlePaid = async (order: IOrder, paymentId: string, signature?: string) => {
   const result = await markOrderPaid(order._id, { paymentId, signature });
-  if (result?.fresh && result.order) await sendConfirmation(result.order);
+  if (result?.fresh && result.order) void sendOrderConfirmation(result.order._id);
   return result?.order ?? null;
 };
 
@@ -192,6 +174,64 @@ export const razorpayWebhook = async (req: Request, res: Response) => {
   }
 };
 
+// Resend webhook — what happened to a confirmation email after we sent it.
+// Kept apart from the send status: "sent" means Resend accepted it; these say
+// whether it reached the inbox. Mounted in app.ts with a raw body parser,
+// because the signature covers the exact bytes. Resend retries any non-2xx.
+const DELIVERY_EVENTS: Record<string, string> = {
+  'email.delivered': 'delivered',
+  'email.delivery_delayed': 'delivery_delayed',
+  'email.bounced': 'bounced',
+  'email.complained': 'complained',
+  'email.failed': 'failed',
+};
+
+export const resendWebhook = async (req: Request, res: Response) => {
+  try {
+    const secret = process.env.RESEND_WEBHOOK_SECRET?.trim();
+    if (!secret || !isEmailConfigured()) {
+      logger.error('Resend webhook received but RESEND_WEBHOOK_SECRET or the Resend email setup is missing');
+      return res.status(503).json({ success: false, message: 'Webhook not configured' });
+    }
+    const raw = req.body;
+    let event: any;
+    try {
+      if (!Buffer.isBuffer(raw)) throw new Error('no body');
+      event = resendClient().webhooks.verify({
+        payload: raw.toString('utf8'),
+        headers: {
+          id: req.get('svix-id') || req.get('webhook-id') || '',
+          timestamp: req.get('svix-timestamp') || req.get('webhook-timestamp') || '',
+          signature: req.get('svix-signature') || req.get('webhook-signature') || '',
+        },
+        webhookSecret: secret,
+      });
+    } catch {
+      logger.warn('Rejected Resend webhook with a bad or expired signature');
+      return res.status(400).json({ success: false, message: 'Invalid signature' });
+    }
+
+    const status = DELIVERY_EVENTS[event.type];
+    const emailId = event.data?.email_id;
+    if (!status || !emailId) return res.status(200).json({ success: true, ignored: event.type });
+
+    // Events can arrive out of order: "delayed" never overwrites a final outcome.
+    const filter: Record<string, unknown> = { 'confirmationEmail.resendId': emailId };
+    if (status === 'delivery_delayed') {
+      filter.$or = [{ 'confirmationEmail.delivery.status': null }, { 'confirmationEmail.delivery.status': 'delivery_delayed' }];
+    }
+    const at = new Date(event.created_at || Date.now());
+    const updated = await Order.findOneAndUpdate(filter, { $set: { 'confirmationEmail.delivery': { status, at } } }).select('_id');
+    if (updated && status !== 'delivered' && status !== 'delivery_delayed') {
+      logger.warn(`Order confirmation for ${updated._id} was ${status} (Resend email ${emailId})`);
+    }
+    return res.status(200).json({ success: true });
+  } catch (err: any) {
+    logger.error(`Resend webhook failed: ${err?.stack || err}`);
+    return res.status(500).json({ success: false });
+  }
+};
+
 // Public order lookup for the Track Order page: needs the order ID and the
 // email on the account, and reveals status only.
 export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
@@ -234,7 +274,8 @@ export const getCustomerOrders = asyncHandler(async (req: Request, res: Response
 export const getAllOrders = asyncHandler(async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 0, 200);
   const page = Math.max(Number(req.query.page) || 1, 1);
-  let query = Order.find(PLACED).populate(ADMIN_ORDER_POPULATE).sort({ createdAt: -1 });
+  // The studio sees each order's confirmation email status; shoppers' order views never include it.
+  let query = Order.find(PLACED).select('+confirmationEmail').populate(ADMIN_ORDER_POPULATE).sort({ createdAt: -1 });
   if (limit) query = query.skip((page - 1) * limit).limit(limit);
 
   successResponse(res, 200, 'Orders fetched', await query);

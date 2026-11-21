@@ -109,7 +109,7 @@ describe('security', () => {
     assert.equal((await api('GET', '/users/profile', { token: customer.token })).status, 200);
   });
 
-  it('B8: refuses to boot without JWT_SECRET, and in production without payment/Google config', () => {
+  it('B8: refuses to boot without JWT_SECRET or MONGODB_URI, and in production (or on Render) without payment/Google config', () => {
     const root = path.join(__dirname, '..');
     // Run from an empty folder so dotenv can't pick up the developer's real .env.
     const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genesis-env-'));
@@ -120,15 +120,31 @@ describe('security', () => {
         encoding: 'utf8',
       });
     try {
-      const noSecret = run({ NODE_ENV: 'development' });
+      const db = { MONGODB_URI: 'mongodb://db.example.test/genesis' };
+      const noSecret = run({ NODE_ENV: 'development', ...db });
       assert.notEqual(noSecret.status, 0);
       assert.match(noSecret.stderr, /JWT_SECRET/);
-      const dev = run({ NODE_ENV: 'development', JWT_SECRET: 'x' });
+      // No silent localhost database, not even in development.
+      const noDb = run({ NODE_ENV: 'development', JWT_SECRET: 'x' });
+      assert.notEqual(noDb.status, 0);
+      assert.match(noDb.stderr, /MONGODB_URI/);
+      const dev = run({ NODE_ENV: 'development', JWT_SECRET: 'x', ...db });
       assert.equal(dev.status, 0, dev.stderr);
       // NODE_ENV unset means production: Razorpay/Google/FRONTEND_URL become mandatory.
-      const unsetNodeEnv = run({ JWT_SECRET: 'x' });
+      const unsetNodeEnv = run({ JWT_SECRET: 'x', ...db });
       assert.notEqual(unsetNodeEnv.status, 0);
       assert.match(unsetNodeEnv.stderr, /RAZORPAY_KEY_SECRET/);
+      // Production needs the live https storefront for email links, not localhost.
+      const live = { JWT_SECRET: 'x', ...db, GOOGLE_CLIENT_ID: 'g.apps.googleusercontent.com', RAZORPAY_KEY_ID: 'rzp_test_x', RAZORPAY_KEY_SECRET: 'y' };
+      const localLinks = run({ ...live, FRONTEND_URL: 'http://localhost:3000' });
+      assert.notEqual(localLinks.status, 0);
+      assert.match(localLinks.stderr, /FRONTEND_URL must be the live storefront address over https/);
+      const okLinks = run({ ...live, FRONTEND_URL: 'https://genesisbypreethy.com' });
+      assert.equal(okLinks.status, 0, okLinks.stderr);
+      // On Render a mistyped NODE_ENV doesn't skip the checks (FRONTEND_URL would become localhost).
+      const renderDev = run({ NODE_ENV: 'development', RENDER: 'true', JWT_SECRET: 'x', ...db });
+      assert.notEqual(renderDev.status, 0);
+      assert.match(renderDev.stderr, /FRONTEND_URL/);
     } finally {
       fs.rmSync(emptyDir, { recursive: true, force: true });
     }
@@ -317,7 +333,8 @@ describe('security', () => {
       assert.doesNotMatch(html, /heedy/i);
       assert.match(html, /Genesis/);
       assert.doesNotMatch(html, /token=/);
-      assert.match(html, /href="http:\/\/shop\.test\/profile"/);
+      // The live site's page for this order, even though FRONTEND_URL here is a non-https test host.
+      assert.match(html, /href="https:\/\/genesisbypreethy\.com\/profile\?tab=orders&amp;order=ord1"/);
       assert.doesNotMatch(html, /<script>|<img src=x/);
       assert.match(html, /Size M · Qty 1/);
     });
@@ -363,7 +380,7 @@ describe('security', () => {
   it('B4: createAdmin refuses to run without credentials from the environment', () => {
     const r = spawnSync(process.execPath, ['-r', 'ts-node/register/transpile-only', 'createAdmin.ts'], {
       cwd: path.join(__dirname, '..'),
-      env: { PATH: process.env.PATH || '', SystemRoot: process.env.SystemRoot || '', NODE_ENV: 'test', JWT_SECRET: 'x', ADMIN_EMAIL: 'a@b.co', ADMIN_PASSWORD: 'short' },
+      env: { PATH: process.env.PATH || '', SystemRoot: process.env.SystemRoot || '', NODE_ENV: 'test', JWT_SECRET: 'x', MONGODB_URI: 'mongodb://unused.test/genesis-test', ADMIN_EMAIL: 'a@b.co', ADMIN_PASSWORD: 'short' },
       encoding: 'utf8',
     });
     assert.notEqual(r.status, 0);

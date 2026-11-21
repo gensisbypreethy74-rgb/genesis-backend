@@ -10,7 +10,9 @@ export const ENV = {
   // sets NODE_ENV=development explicitly.
   NODE_ENV: process.env.NODE_ENV || 'production',
   PORT: process.env.PORT || 5000,
-  MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/heedy-db',
+  // No default: a missing value must stop the server, not quietly use some
+  // other database. Local development sets it in .env like everywhere else.
+  MONGODB_URI: process.env.MONGODB_URI || '',
   JWT_SECRET: process.env.JWT_SECRET || '',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
   ADMIN_JWT_EXPIRES_IN: process.env.ADMIN_JWT_EXPIRES_IN || '12h',
@@ -38,6 +40,20 @@ export const ENV = {
 
 export const isProduction = () => ENV.NODE_ENV === 'production';
 
+/**
+ * A storefront address a customer can open from an email: https, a real host
+ * (not localhost), and an origin only. Emails go to real inboxes, so links
+ * must never point at a developer's machine.
+ */
+export const isPublicSiteUrl = (value: string) => {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(u.hostname) && u.pathname === '/' && !u.search && !u.hash;
+  } catch {
+    return false;
+  }
+};
+
 /** Razorpay is usable only with a real key pair. */
 export const razorpayConfigured = () => Boolean(ENV.RAZORPAY_KEY_ID && ENV.RAZORPAY_KEY_SECRET);
 
@@ -55,7 +71,10 @@ export const mockPaymentsAllowed = () => !isProduction() && !isDeployed() && !ra
 // payment flow.
 const missing: string[] = [];
 if (!ENV.JWT_SECRET) missing.push('JWT_SECRET');
-if (isProduction()) {
+if (!ENV.MONGODB_URI) missing.push('MONGODB_URI');
+// A Render deploy is checked like production even if NODE_ENV was mistyped:
+// otherwise FRONTEND_URL would silently become localhost in customer emails.
+if (isProduction() || isDeployed()) {
   for (const key of ['MONGODB_URI', 'FRONTEND_URL', 'GOOGLE_CLIENT_ID', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'] as const) {
     if (!process.env[key]) missing.push(key);
   }
@@ -63,15 +82,24 @@ if (isProduction()) {
   if (!ENV.RAZORPAY_WEBHOOK_SECRET) {
     console.warn('RAZORPAY_WEBHOOK_SECRET is not set: paid orders whose browser closed before verification will not be recovered.');
   }
+  // Not fatal, so a missing email setup can never take checkout down: order
+  // confirmations wait as "pending" and go out once it is configured.
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
+    console.warn('RESEND_API_KEY / EMAIL_FROM are not set: order confirmation emails are queued but not sent.');
+  }
 }
 if (missing.length) {
   throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+}
+// Every link in customer emails is built on it.
+if ((isProduction() || isDeployed()) && !isPublicSiteUrl(ENV.FRONTEND_URL)) {
+  throw new Error('FRONTEND_URL must be the live storefront address over https, e.g. https://genesisbypreethy.com');
 }
 
 if (isDeployed() && !isProduction()) {
   console.warn(
     `WARNING: running on Render with NODE_ENV=${ENV.NODE_ENV}. Stack traces are sent to visitors, ` +
-    'the API rate limit is off and production config checks are skipped. Set NODE_ENV=production.'
+    'and the API rate limit is off. Set NODE_ENV=production.'
   );
 }
 
@@ -83,6 +111,7 @@ export const configSummary = () => {
     `Google client=${ENV.GOOGLE_CLIENT_ID ? ENV.GOOGLE_CLIENT_ID.slice(0, 12) + '…' : '(missing)'}`,
     `Razorpay=${ENV.RAZORPAY_KEY_ID.startsWith('rzp_live_') ? 'live' : ENV.RAZORPAY_KEY_ID.startsWith('rzp_test_') ? 'test' : '(missing)'}`,
     `webhook secret=${ENV.RAZORPAY_WEBHOOK_SECRET ? 'set' : 'MISSING'}`,
-    `email=${process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL ? 'on' : 'off'}`,
+    `email=${process.env.RESEND_API_KEY && process.env.EMAIL_FROM ? 'on (Resend)' : 'off'}`,
+    `email webhook secret=${process.env.RESEND_WEBHOOK_SECRET ? 'set' : 'MISSING'}`,
   ].join(' | ');
 };

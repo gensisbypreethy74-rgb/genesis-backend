@@ -1,6 +1,6 @@
 /**
  * Test harness: a throwaway local mongod, the real Express app on a random
- * port, and a fetch stub so no test can reach Google, Razorpay, SendGrid or
+ * port, and a fetch stub so no test can reach Google, Razorpay, Resend or
  * Zoho. The real .env is never loaded (config/env.ts skips it under NODE_ENV=test).
  */
 import { spawn, ChildProcess } from 'node:child_process';
@@ -14,6 +14,8 @@ import path from 'node:path';
 Object.assign(process.env, {
   NODE_ENV: 'test',
   JWT_SECRET: 'test-jwt-secret',
+  // Required by config/env; the tests connect to their own throwaway mongod.
+  MONGODB_URI: 'mongodb://unused.test/genesis-test',
   GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
   RAZORPAY_KEY_ID: 'rzp_test_dummy',
   RAZORPAY_KEY_SECRET: 'test_key_secret',
@@ -21,7 +23,7 @@ Object.assign(process.env, {
   FRONTEND_URL: 'http://shop.test',
   CORS_ORIGIN: 'http://shop.test,http://admin.test',
 });
-for (const key of ['SENDGRID_API_KEY', 'SENDGRID_FROM_EMAIL', 'ZOHO_CLIENT_ID', 'ZOHO_REFRESH_TOKEN', 'CLOUDINARY_API_SECRET']) {
+for (const key of ['RESEND_API_KEY', 'EMAIL_FROM', 'RESEND_WEBHOOK_SECRET', 'ZOHO_CLIENT_ID', 'ZOHO_REFRESH_TOKEN', 'CLOUDINARY_API_SECRET']) {
   delete process.env[key];
 }
 

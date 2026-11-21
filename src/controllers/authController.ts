@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { User, IUser } from '../models/User';
@@ -117,10 +118,8 @@ async function identityFromIdToken(credential: string): Promise<GoogleIdentity |
 // Google Sign-In for customers. Accepts the access token from the storefront's
 // useGoogleLogin (implicit flow) or a Google ID token; both are verified with Google.
 export const googleAuth = asyncHandler(async (req: Request, res: Response) => {
-  const { accessToken, credential, mode } = req.body;
-
-  // Which screen the request came from: 'register' (sign up) or 'signin' (sign in).
-  const authMode = mode === 'register' ? 'register' : mode === 'signin' ? 'signin' : undefined;
+  // `mode` ('signin' | 'register') may still be sent; it changes nothing (see below).
+  const { accessToken, credential } = req.body;
 
   if (!ENV.GOOGLE_CLIENT_ID) {
     return errorResponse(res, 500, 'Google OAuth is not configured');
@@ -151,38 +150,46 @@ export const googleAuth = asyncHandler(async (req: Request, res: Response) => {
       return errorResponse(res, 403, 'Admin accounts must sign in through the admin portal.');
     }
 
-    // Signing in requires an existing account.
-    if (authMode === 'signin' && !user) {
-      return errorResponse(res, 404, 'You are not signed up. Please create an account first.');
-    }
-
-    // Signing up requires the account to not already exist.
-    if (authMode === 'register' && user) {
-      return errorResponse(res, 409, 'You are already signed up. Please sign in instead.');
-    }
-
+    // Every Google button works the same way, whichever page it is on: an
+    // existing customer is signed in to their account, a new one gets an
+    // account. `mode` only says which page that was; it never refuses anyone.
     if (user) {
-      // Email already exists — reuse the existing account instead of creating a duplicate.
       if (!user.isActive) {
         return errorResponse(res, 403, 'Your account has been deactivated');
       }
-      // Link the Google ID if this account was created another way.
-      if (!user.googleId) {
-        user.googleId = identity.googleId;
-        await user.save();
+      // Accounts are matched on the email Google has verified. One already
+      // linked to a *different* Google account is refused, not re-linked: the
+      // address now belongs to another Google account (a recycled work email,
+      // say), which must not inherit this customer's orders and addresses.
+      if (user.googleId && user.googleId !== identity.googleId) {
+        securityLogger.loginFailure(normalizedEmail, req.ip || 'unknown', 'google account id mismatch');
+        return errorResponse(res, 409, 'This email is linked to a different Google account. Please contact us and we will help you sign in.');
       }
+      // Link Google to an account created another way, and fill in what Google
+      // can add — never overwriting the customer's own name or details.
+      let linked = false;
+      if (!user.googleId) { user.googleId = identity.googleId; linked = true; }
+      if (!user.avatar && identity.picture) { user.avatar = identity.picture; linked = true; }
+      if (!user.isVerified) { user.isVerified = true; linked = true; }
+      if (linked) await user.save();
     } else {
-      // No existing customer with this email — create a new account.
-      user = await User.create({
-        name: identity.name || 'Google User',
-        email: normalizedEmail,
-        googleId: identity.googleId,
-        avatar: identity.picture,
-        role: 'customer',
-        isVerified: true, // Google emails are already verified
-        isActive: true,
-        password: `google_${identity.googleId}_${Date.now()}`, // Random password since Google users don't need one
-      });
+      try {
+        user = await User.create({
+          name: identity.name || 'Google User',
+          email: normalizedEmail,
+          googleId: identity.googleId,
+          avatar: identity.picture,
+          role: 'customer',
+          isVerified: true, // Google emails are already verified
+          isActive: true,
+          password: crypto.randomBytes(32).toString('hex'), // never used: Google customers have no password
+        });
+      } catch (error: any) {
+        // A second tab created this account a moment ago: sign in to that one.
+        if (error?.code !== 11000) throw error;
+        user = await User.findOne({ email: normalizedEmail }).collation({ locale: 'en', strength: 2 });
+        if (!user || user.googleId !== identity.googleId) throw error;
+      }
     }
 
     const token = generateToken(user);
@@ -191,7 +198,7 @@ export const googleAuth = asyncHandler(async (req: Request, res: Response) => {
     successResponse(
       res,
       200,
-      isNewUser ? 'Account created successfully' : 'This email is already registered. Signed you in.',
+      isNewUser ? 'Account created successfully' : 'Signed in successfully',
       {
         _id: user._id,
         name: user.name,

@@ -114,6 +114,18 @@ export const schemas = {
         quantity: quantity.min(1).max(20),
         size,
       })).max(50, 'Too many items to merge'),
+      // The guest cart's own id; a repeat of an applied merge is a no-op.
+      mergeId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/, 'Invalid merge ID').optional(),
+    }),
+  }),
+
+  cartQuote: z.object({
+    body: z.object({
+      items: z.array(z.object({
+        productId: objectId('product ID'),
+        quantity: quantity.min(1).max(20),
+        size,
+      })).max(50, 'Too many items in the bag'),
     }),
   }),
 
